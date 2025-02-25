@@ -147,6 +147,16 @@ function connectBot(hostname, port) {
         console.log('Bot disconnected. Retrying in 5 seconds...');
         setTimeout(checkServerStatus, 5000);
     });
+
+    bot.on('vehicle', (vehicle) => {
+        try {
+            if (vehicle && vehicle.passengers) {
+                vehicle.passengers.push(bot.entity);
+            }
+        } catch (err) {
+            console.error('Error handling vehicle entity:', err.message);
+        }
+    });
 }
 
 checkServerStatus();
