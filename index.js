@@ -148,10 +148,13 @@ function connectBot(hostname, port) {
         setTimeout(checkServerStatus, 5000);
     });
 
+    // Safe check for vehicle entity
     bot.on('vehicle', (vehicle) => {
         try {
             if (vehicle && vehicle.passengers) {
-                vehicle.passengers.push(bot.entity);
+                vehicle.passengers.push(bot.entity); // Only push if passengers exists
+            } else {
+                console.log('Skipping vehicle with no passengers array:', vehicle);
             }
         } catch (err) {
             console.error('Error handling vehicle entity:', err.message);
