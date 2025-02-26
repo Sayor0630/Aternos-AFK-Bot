@@ -1,10 +1,10 @@
 {
     "name": "aternos_afk_bot",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "This bot only works with Minecraft version 1.20.1 with Fabric",
-    "main": "index.js",
+    "main": "server.js",
     "scripts": {
-        "start": "node index.js"
+        "start": "node server.js"
     },
     "author": "Sayor0603",
     "license": "MIT",
