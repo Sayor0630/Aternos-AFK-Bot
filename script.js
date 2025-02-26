@@ -1,7 +1,7 @@
 // Bot Controller Script
 
 // Configuration
-const API_URL = 'http://localhost:3001'; // Change this to your backend URL if needed
+const API_URL = 'https://aternos-afk-bot-79in.onrender.com'; // Change this to your backend URL if needed
 let statusUpdateInterval = null;
 let logUpdateInterval = null;
 
@@ -275,21 +275,130 @@ async function sendChat() {
   }
 }
 
-async function executeCommand() {
-  const command = $('#command-input').value.trim();
-  
-  if (!command) {
-    showMessage('Please enter a command', 'warning');
-    return;
+function createCommandLine() {
+  const line = document.createElement('div');
+  line.className = 'command-line d-flex align-items-center mb-2';
+
+  // Input with Visual Prefix (no checkbox)
+  const inputGroup = document.createElement('div');
+  inputGroup.className = 'input-group flex-grow-1';
+  const prefix = document.createElement('span');
+  prefix.className = 'input-group-text';
+  prefix.textContent = '/';
+  prefix.style.color = 'var(--primary)'; // Matches Execute button
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'form-control command-input';
+  input.placeholder = 'enter command without /';
+  input.style.fontFamily = 'monospace'; // Command-line feel
+  inputGroup.appendChild(prefix);
+  inputGroup.appendChild(input);
+
+  // Remove Button
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'btn btn-danger btn-sm ms-2';
+  removeBtn.textContent = 'X';
+  removeBtn.addEventListener('click', () => {
+      if ($('#command-list').children.length > 1) {
+          line.remove();
+      }
+  });
+
+  // Assemble the Line
+  line.appendChild(inputGroup);
+  line.appendChild(removeBtn);
+
+  // Event Listeners
+  input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+          e.preventDefault();
+          const commandList = $('#command-list');
+          if (commandList.lastElementChild === line) {
+              const newLine = createCommandLine();
+              commandList.appendChild(newLine);
+              newLine.querySelector('.command-input').focus();
+          }
+      } else if (e.key === 'Backspace' && input.value === '' && $('#command-list').children.length > 1) {
+          const prevLine = line.previousElementSibling;
+          line.remove();
+          if (prevLine) prevLine.querySelector('.command-input').focus();
+      }
+  });
+
+  input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const paste = (e.clipboardData || window.clipboardData).getData('text');
+      const lines = paste.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length > 1) {
+          input.value = lines[0];
+          for (let i = 1; i < lines.length; i++) {
+              const newLine = createCommandLine();
+              newLine.querySelector('.command-input').value = lines[i];
+              line.insertAdjacentElement('afterend', newLine);
+          }
+      } else {
+          input.value = paste;
+      }
+  });
+
+  return line;
+}
+
+// Execute All Commands (updated to execute all non-empty inputs, no checkbox check)
+async function executeCommands() {
+  const commandList = $('#command-list');
+  const commandInputs = Array.from(commandList.querySelectorAll('.command-input'))
+      .map(input => input.value.trim())
+      .filter(cmd => cmd.length > 0);
+
+  if (commandInputs.length === 0) {
+      showMessage('Please enter at least one command', 'warning');
+      return;
   }
-  
-  const result = await callApi('/execute-command', 'POST', { command });
-  
-  if (result.success) {
-    $('#command-input').value = '';
-    showMessage(`Command executed: /${command}`, 'info');
-  } else {
-    showMessage(`Failed to execute command: ${result.message}`, 'danger');
+
+  const executeBtn = $('#execute-commands-btn');
+  executeBtn.disabled = true;
+  executeBtn.textContent = 'Executing...';
+
+  try {
+      // Create an array of command lines for removal tracking
+      const commandLines = Array.from(commandList.querySelectorAll('.command-line'));
+
+      for (let i = 0; i < commandInputs.length; i++) {
+          const command = commandInputs[i];
+          const result = await callApi('/execute-command', 'POST', { command });
+
+          if (result.success) {
+              showMessage(`Command executed: /${command}`, 'info');
+              // Remove the command line after successful execution
+              commandLines[i].remove();
+          } else {
+              showMessage(`Failed to execute command "/${command}": ${result.message}`, 'danger');
+              break; // Stop on error; remove this line to continue despite errors
+          }
+      }
+
+      // If any lines remain after execution, keep at least one empty line
+      if (commandList.children.length === 0) {
+          const newLine = createCommandLine();
+          commandList.appendChild(newLine);
+      }
+  } catch (error) {
+      showMessage(`Error executing commands: ${error.message}`, 'danger');
+  } finally {
+      executeBtn.disabled = false;
+      executeBtn.textContent = 'Execute';
+  }
+}
+
+// Remove All Commands
+function removeAllCommands() {
+  const commandList = $('#command-list');
+  if (confirm('Are you sure you want to remove all commands?')) {
+      commandList.innerHTML = '';
+      const newLine = createCommandLine();
+      commandList.appendChild(newLine);
+      showMessage('All commands removed', 'info');
   }
 }
 
@@ -659,10 +768,23 @@ function initApp() {
     sendChat();
   });
   
-  $('#command-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    executeCommand();
-  });
+// Initialize Command List
+const commandList = $('#command-list');
+const initialLine = createCommandLine();
+commandList.appendChild(initialLine);
+
+// Add Command Button
+$('#add-command-btn').addEventListener('click', () => {
+    const newLine = createCommandLine();
+    commandList.appendChild(newLine);
+    newLine.querySelector('.command-input').focus();
+});
+
+// Remove All Commands Button
+$('#remove-all-commands-btn').addEventListener('click', removeAllCommands);
+
+// Execute Commands Button
+$('#execute-commands-btn').addEventListener('click', executeCommands);
   
   $('#toggle-auto-movement').addEventListener('click', toggleAutoMovement);
   $('#collect-items-btn').addEventListener('click', collectItems);

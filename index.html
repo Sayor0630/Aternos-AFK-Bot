@@ -547,13 +547,12 @@
                                 </div>
 
                                 <h5 class="mb-3">Commands</h5>
-                                <form id="command-form" class="mb-3">
-                                    <div class="input-group">
-                                        <span class="input-group-text">/</span>
-                                        <input type="text" class="form-control" id="command-input" placeholder="Enter command without slash">
-                                        <button class="btn btn-primary" type="submit">Execute</button>
-                                    </div>
-                                </form>
+                                <div id="command-list" style="max-height: 200px; overflow-y: auto;"></div>
+                                <div class="d-flex gap-2 mt-2">
+                                    <button id="add-command-btn" class="btn btn-secondary">Add Command</button>
+                                    <button id="remove-all-commands-btn" class="btn btn-danger">Remove All Commands</button>
+                                    <button id="execute-commands-btn" class="btn btn-primary">Execute</button>
+                                </div>
                             </div>
                         </div>
 
