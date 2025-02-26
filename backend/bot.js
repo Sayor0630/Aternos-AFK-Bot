@@ -136,11 +136,6 @@ function startBot(host, port) {
     bot.on('death', () => {
         console.log('Bot has died');
         isDead = true;
-        // Stop auto movement when dead
-        if (isAutoMoving) {
-            stopAutoMovement();
-            isAutoMoving = true; // Will be restarted on respawn
-        }
     });
 
     // Event for respawning
