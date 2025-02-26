@@ -20,11 +20,11 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/fskhrijuanda/aternos-bot-24-7.git"
+        "url": "git+https://github.com/Sayor0630/Aternos-AFK-Bot.git"
     },
     "keywords": [],
     "bugs": {
-        "url": "https://github.com/fskhrijuanda/aternos-bot-24-7/issues"
+        "url": "https://github.com/Sayor0630/Aternos-AFK-Bot/issues"
     },
-    "homepage": "https://github.com/fskhrijuanda/aternos-bot-24-7#readme"
+    "homepage": "https://github.com/Sayor0630/Aternos-AFK-Bot#readme"
 }
