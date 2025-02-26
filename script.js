@@ -1,7 +1,7 @@
 // Bot Controller Script
 
 // Configuration
-const API_URL = 'http://localhost:3001'; // Change this to your backend URL if needed
+const API_URL = 'https://aternos-afk-bot-79in.onrender.com'; // Change this to your backend URL if needed
 let statusUpdateInterval = null;
 let logUpdateInterval = null;
 
