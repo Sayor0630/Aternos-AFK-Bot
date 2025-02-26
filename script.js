@@ -176,6 +176,7 @@ async function stopBot() {
     $("#start-btn").textContent = "Connect Bot";
     $("#stop-btn").disabled = true;
     $("#restart-btn").disabled = true;
+    $("#server-host").disabled = false; // Re-enable input on stop
     localStorage.removeItem("lastServerAddress");
   } else {
     showMessage(`Failed to stop bot: ${result.message}`, "danger");
@@ -473,7 +474,8 @@ async function updateStatus() {
   if (backendStatus !== "connected") return;
   try {
     const status = await callApi("/bot-status");
-    if (status.online) {
+    const connectionStatus = await callApi("/connection-status"); // Get detailed connection status
+    if (status.online && connectionStatus.isConnected) {
       enableAllCards();
       $("#connection-status").textContent = "Connected";
       $("#connection-status").className = "badge badge-success";
@@ -481,6 +483,13 @@ async function updateStatus() {
       $("#start-btn").textContent = "Connected";
       $("#stop-btn").disabled = false;
       $("#restart-btn").disabled = false;
+
+      // Disable and update server-host input with connected IP:port
+      const lastServerAddress = localStorage.getItem("lastServerAddress");
+      if (lastServerAddress) {
+        $("#server-host").value = lastServerAddress;
+        $("#server-host").disabled = true; // Disable input when connected
+      }
 
       // Update health bar
       if (status.health !== undefined) {
@@ -602,6 +611,11 @@ async function updateStatus() {
       $("#start-btn").textContent = "Connect Bot";
       $("#stop-btn").disabled = true;
       $("#restart-btn").disabled = true;
+      $("#server-host").disabled = false; // Re-enable input when disconnected
+      const lastServerAddress = localStorage.getItem("lastServerAddress");
+      if (lastServerAddress) {
+        $("#server-host").value = lastServerAddress; // Restore last value
+      }
       if (status.connectionError) {
         showMessage(`Connection error: ${status.connectionError}`, "danger");
       }
@@ -683,7 +697,7 @@ function initApp() {
     } else if (!statusUpdateInterval) {
       await updateStatus();
     }
-  }, 10000);
+  }, 2000);
 
   // Set up event listeners
   $("#connect-form").addEventListener("submit", (e) => {
