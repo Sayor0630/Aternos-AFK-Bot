@@ -22,38 +22,43 @@ let movementInterval;
 let isDead = false;
 let lastFoodLevel = 20; // Track food level changes
 
-// Function to fix vehicle passengers issue
+// Function to fix vehicle passengers issue with error handling
 function fixVehiclePassengersIssue() {
     if (bot && bot._client) {
-        // Override the mount handling to check if vehicle exists
+        // Save the original entity plugin handler
+        const originalEntityHandler = bot.entities ? bot.entities.onMount : null;
+        
+        // Override the mount handling at the client level
         const originalOnMount = bot._client.on;
         bot._client.on = function(event, handler) {
             if (event === 'mount') {
                 return originalOnMount.call(this, event, (packet) => {
                     try {
-                        // Safety wrapper for the mount handler
-                        const passengerEntity = bot.entities[packet.entityId];
-                        const vehicleEntity = bot.entities[packet.vehicleId];
-                        
-                        // Only process if both entities exist
-                        if (passengerEntity && vehicleEntity) {
-                            // Ensure vehicle has passengers array
-                            if (!vehicleEntity.passengers) {
-                                vehicleEntity.passengers = [];
-                            }
-                            
-                            // Continue with original logic
-                            handler(packet);
-                        } else {
-                            console.log('Warning: Skipping mount event for missing entities');
-                        }
+                        // Call the original handler in a try-catch block
+                        handler(packet);
                     } catch (err) {
-                        console.error('Error in mount handler:', err);
+                        // Just log the error and continue
+                        console.log('Ignored mount error:', err.message);
                     }
                 });
             }
             return originalOnMount.call(this, event, handler);
         };
+        
+        // Also patch the mineflayer entities plugin if possible
+        if (bot.entities && typeof bot.entities.onMount === 'function') {
+            bot.entities.onMount = function(packet) {
+                try {
+                    // Try to use the original handler
+                    if (originalEntityHandler) {
+                        originalEntityHandler.call(bot.entities, packet);
+                    }
+                } catch (err) {
+                    // Just log the error and continue without crashing
+                    console.log('Ignored entity mount error:', err.message);
+                }
+            };
+        }
     }
 }
 
