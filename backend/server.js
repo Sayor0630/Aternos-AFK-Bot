@@ -1,18 +1,21 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const bot = require("./bot"); // Include bot.js with your bot logic
+const bot = require("./bot"); // Assuming bot.js is in the same directory
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 const port = 3001;
+
+// File to store last connection details
+const LAST_CONNECTION_FILE = path.join(__dirname, "last_connection.json");
 
 // Create a history of chat messages and server events
 const logHistory = [];
 function addToLog(type, message) {
   const timestamp = new Date().toISOString();
   logHistory.unshift({ timestamp, type, message });
-
-  // Keep the log history limited to the last 100 entries
   if (logHistory.length > 100) {
     logHistory.pop();
   }
@@ -26,11 +29,59 @@ app.get("/health", (req, res) => {
   res.status(200).json({ message: "Backend is up and running!" });
 });
 
+// Function to save connection details
+function saveConnectionDetails(host, port) {
+  const connectionDetails = { host, port };
+  try {
+    fs.writeFileSync(
+      LAST_CONNECTION_FILE,
+      JSON.stringify(connectionDetails),
+      "utf8"
+    );
+    addToLog("system", `Saved connection details: ${host}:${port}`);
+  } catch (err) {
+    console.error("Error saving connection details:", err);
+    addToLog("system", `Failed to save connection details: ${err.message}`);
+  }
+}
+
+// Function to load connection details
+function loadConnectionDetails() {
+  if (fs.existsSync(LAST_CONNECTION_FILE)) {
+    try {
+      const data = fs.readFileSync(LAST_CONNECTION_FILE, "utf8");
+      return JSON.parse(data);
+    } catch (err) {
+      console.error("Error loading connection details:", err);
+      addToLog("system", `Failed to load connection details: ${err.message}`);
+      return null;
+    }
+  }
+  return null;
+}
+
+// Function to clear connection details (e.g., on intentional stop)
+function clearConnectionDetails() {
+  try {
+    if (fs.existsSync(LAST_CONNECTION_FILE)) {
+      fs.unlinkSync(LAST_CONNECTION_FILE);
+      addToLog("system", "Cleared connection details");
+    }
+  } catch (err) {
+    console.error("Error clearing connection details:", err);
+    addToLog("system", `Failed to clear connection details: ${err.message}`);
+  }
+}
+
 // Route to start the bot
 app.post("/start-bot", (req, res) => {
   const { host, port } = req.body;
   const result = bot.startBot(host, port);
   addToLog("system", `Attempted to start bot: ${result.message}`);
+  if (result.success) {
+    // Save connection details when bot starts (actual saving happens on login in bot.js)
+    // This ensures we only save if the connection is valid
+  }
   res.json(result);
 });
 
@@ -38,6 +89,9 @@ app.post("/start-bot", (req, res) => {
 app.post("/stop-bot", (req, res) => {
   const result = bot.stopBot();
   addToLog("system", `Attempted to stop bot: ${result.message}`);
+  if (result.success) {
+    clearConnectionDetails(); // Clear details on intentional stop
+  }
   res.json(result);
 });
 
@@ -117,7 +171,7 @@ app.get("/connection-status", (req, res) => {
   res.json(status);
 });
 
-// Route to get the bot's current location (x, y, z)
+// Route to get the bot's current location
 app.get("/bot-location", (req, res) => {
   const location = bot.getBotLocation();
   res.json(location);
@@ -129,7 +183,7 @@ app.get("/bot-health", (req, res) => {
   res.json(health);
 });
 
-// Route to get the bot's current action (chatting, idle, moving, etc.)
+// Route to get the bot's current action
 app.get("/bot-action", (req, res) => {
   const action = bot.getBotAction();
   res.json(action);
@@ -151,7 +205,7 @@ app.post("/execute-command", (req, res) => {
   res.json(result);
 });
 
-// Route to teleport the bot (sending a command)
+// Route to teleport the bot
 app.post("/teleport", (req, res) => {
   const { x, y, z } = req.body;
   const result = bot.executeCommand(`tp @s ${x} ${y} ${z}`);
@@ -178,8 +232,35 @@ app.get("/log-history", (req, res) => {
   res.json(logHistory);
 });
 
+// Auto-reconnect logic on server startup
+function startBotWithAutoReconnect() {
+  const connectionDetails = loadConnectionDetails();
+  if (connectionDetails) {
+    const { host, port } = connectionDetails;
+    console.log(`Attempting to auto-reconnect to ${host}:${port}`);
+    addToLog("system", `Auto-reconnecting to ${host}:${port}`);
+    const result = bot.startBot(host, port);
+    if (!result.success) {
+      console.error(`Auto-reconnect failed: ${result.message}`);
+      addToLog("system", `Auto-reconnect failed: ${result.message}`);
+    }
+  } else {
+    console.log("No previous connection details found.");
+    addToLog("system", "No previous connection details found.");
+  }
+}
+
 // Start the server
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
   addToLog("system", "Backend server started");
+  startBotWithAutoReconnect(); // Check and attempt auto-reconnect on startup
 });
+
+// Export functions for potential use elsewhere (optional)
+module.exports = {
+  saveConnectionDetails,
+  loadConnectionDetails,
+  clearConnectionDetails,
+  startBotWithAutoReconnect,
+};

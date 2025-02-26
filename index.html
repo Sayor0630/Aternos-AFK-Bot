@@ -400,7 +400,11 @@
           <i class="fas fa-cube mr-2"></i> Minecraft Bot Controller
         </a>
         <div class="ms-auto d-flex align-items-center">
-          <span class="me-2">Status:</span>
+          <span class="me-2">Backend:</span>
+          <span id="backend-status" class="badge badge-danger"
+            >Disconnected</span
+          >
+          <span class="me-2">Bot:</span>
           <span id="connection-status" class="badge badge-danger"
             >Disconnected</span
           >
@@ -798,7 +802,18 @@
               <!-- Logs Tab -->
               <div class="tab-pane fade" id="logs" role="tabpanel">
                 <div class="card-body">
-                  <h5 class="mb-3">Server Logs</h5>
+                  <div
+                    class="d-flex justify-content-between align-items-center mb-3"
+                  >
+                    <h5 class="mb-0">Server Logs</h5>
+                    <button
+                      id="refresh-logs-btn"
+                      class="btn btn-sm btn-outline-light"
+                      title="Refresh Logs"
+                    >
+                      <i class="fas fa-sync-alt"></i>
+                    </button>
+                  </div>
                   <div id="server-logs">
                     <div class="log-entry text-muted">
                       <span class="log-time">00:00:00</span>

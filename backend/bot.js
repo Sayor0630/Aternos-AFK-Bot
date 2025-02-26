@@ -73,10 +73,8 @@ function startBot(host, port) {
   connectionStatus = "connecting";
   connectionError = "";
 
-  // Set the Minecraft version explicitly (1.20.1)
   const minecraftVersion = "1.20.1";
 
-  // Create a new Minecraft bot instance
   bot = mineflayer.createBot({
     host: host,
     port: port,
@@ -87,26 +85,23 @@ function startBot(host, port) {
     keepAlive: true,
   });
 
-  // Load plugins
   bot.loadPlugin(cmd);
   bot.loadPlugin(pathfinder);
 
-  // Event when bot connects to the server
   bot.on("connect", () => {
     connectionStatus = "connecting";
     console.log("Bot connected to server");
   });
 
-  // Event when bot logs in
   bot.once("login", () => {
     fixVehiclePassengersIssue();
-
     isConnected = true;
     connectionStatus = "connected";
     isDead = false;
     console.log("Bot logged in");
-
-    // Start automatic movement
+    // Save connection details here
+    const server = require("./server"); // Import server.js to access saveConnectionDetails
+    server.saveConnectionDetails(host, port);
     startAutoMovement();
   });
 
