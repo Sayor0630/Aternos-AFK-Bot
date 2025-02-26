@@ -1,13 +1,19 @@
 // Bot Controller Script
 
 // Configuration
-const API_URL = 'https://aternos-afk-bot-79in.onrender.com'; // Change this to your backend URL if needed
+const API_URL = 'http://localhost:3001'; // Change this to your backend URL if needed
 let statusUpdateInterval = null;
 let logUpdateInterval = null;
 
 // DOM Helper Functions
 function $(selector) {
   return document.querySelector(selector);
+}
+
+function disableAllCards() {
+  $('#controlTabsContent').classList.add('disabled');
+  $('#bot-status-card').classList.add('disabled');
+  $('#connection-card').classList.add('disabled');
 }
 
 function showMessage(message, type = 'info') {
@@ -56,6 +62,8 @@ async function callApi(endpoint, method = 'GET', data = null) {
       
       const response = await fetch(`${API_URL}${endpoint}`, options);
       const result = await response.json();
+
+      $('#connection-card').classList.remove('disabled');
       
       return result;
     } catch (error) {
@@ -71,6 +79,13 @@ async function callApi(endpoint, method = 'GET', data = null) {
         // Update connection status to show backend error
         $('#connection-status').textContent = 'Backend Error';
         $('#connection-status').className = 'badge badge-danger';
+      
+      if (status.connectionError) {
+        showMessage(`Connection error: ${status.connectionError}`, 'danger');
+      }
+      
+      // If we were previously connected but now disconnected, clear the intervals
+      stopUpdateIntervalsIfConnected();
       } else {
         showMessage(`API Error: ${error.message}`, 'danger');
       }
@@ -115,6 +130,16 @@ async function stopBot() {
     stopStatusUpdates();
     stopLogUpdates();
     resetStatsToDefault();
+
+    $('#controlTabsContent').classList.add('disabled');
+    $('#bot-status-card').classList.add('disabled');
+    $('#connection-status').textContent = status.connectionStatus || 'Disconnected';
+    $('#connection-status').className = 'badge badge-danger';
+    
+    $('#start-btn').disabled = false;
+    $('#start-btn').textContent = 'Connect Bot';
+    $('#stop-btn').disabled = true;
+    $('#restart-btn').disabled = true;
     // Clear saved server connection info
     localStorage.removeItem('lastServerAddress');
   } else {
@@ -142,6 +167,16 @@ async function killBot() {
   }
 }
 
+async function healBot() {
+  const result = await callApi('/heal-bot', 'POST');
+  
+  if (result.success) {
+    showMessage('Bot healed', 'warning');
+  } else {
+    showMessage(`Failed to heal bot: ${result.message}`, 'danger');
+  }
+}
+
 async function respawnBot() {
   const result = await callApi('/respawn-bot', 'POST');
   
@@ -159,6 +194,26 @@ async function feedBot() {
     showMessage(result.message, 'success');
   } else {
     showMessage(`Failed to feed bot: ${result.message}`, 'warning');
+  }
+}
+
+async function feedBotFood() {
+  const result = await callApi('/feed-bot-food', 'POST');
+  
+  if (result.success) {
+    showMessage(result.message, 'success');
+  } else {
+    showMessage(`Failed to feed bot: ${result.message}`, 'warning');
+  }
+}
+
+async function starveBot() {
+  const result = await callApi('/starve-bot', 'POST');
+  
+  if (result.success) {
+    showMessage(result.message, 'success');
+  } else {
+    showMessage(`Failed to starve bot: ${result.message}`, 'warning');
   }
 }
 
@@ -273,12 +328,14 @@ async function updateStatus() {
     if (status.online) {
       $('#connection-status').textContent = 'Connected';
       $('#connection-status').className = 'badge badge-success';
-      
+
+      $('#controlTabsContent').classList.remove('disabled');
+      $('#bot-status-card').classList.remove('disabled');
+      $('#connection-card').classList.remove('disabled');
       $('#start-btn').disabled = true;
       $('#start-btn').textContent = 'Connected';
       $('#stop-btn').disabled = false;
       $('#restart-btn').disabled = false;
-      $('#control-panel').classList.remove('disabled');
       
       // Update health bar
       if (status.health !== undefined) {
@@ -383,7 +440,6 @@ async function updateStatus() {
       $('#start-btn').textContent = 'Connect Bot';
       $('#stop-btn').disabled = true;
       $('#restart-btn').disabled = true;
-      $('#control-panel').classList.add('disabled');
       
       if (status.connectionError) {
         showMessage(`Connection error: ${status.connectionError}`, 'danger');
@@ -399,7 +455,6 @@ async function updateStatus() {
     $('#connection-status').textContent = 'Error';
     $('#connection-status').className = 'badge badge-danger';
     $('#start-btn').disabled = false;
-    $('#control-panel').classList.add('disabled');
   }
 }
 
@@ -566,6 +621,7 @@ async function checkInitialConnection() {
 // Initialize the app
 function initApp() {
   // Reset stats to default "NA" values
+  disableAllCards();
   resetStatsToDefault();
   
   // Set up event listeners
@@ -577,9 +633,11 @@ function initApp() {
   $('#stop-btn').addEventListener('click', stopBot);
   $('#restart-btn').addEventListener('click', restartBot);
   $('#kill-btn').addEventListener('click', killBot);
+  $('#heal-btn').addEventListener('click', healBot);
   $('#respawn-btn').addEventListener('click', respawnBot);
   $('#feed-btn').addEventListener('click', feedBot);
-  $('#feed-btn-inv').addEventListener('click', feedBot);
+  $('#feed-btn-inv').addEventListener('click', feedBotFood);
+  $('#starve-btn').addEventListener('click', starveBot);
   $('#refresh-stats').addEventListener('click', refreshBotStats);
   
   $('#weather-clear').addEventListener('click', () => setWeather('clear'));

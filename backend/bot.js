@@ -215,23 +215,26 @@ function stopBot() {
 
 // Function to restart the bot
 function restartBot() {
-    const currentHost = bot?.entity?.username ? bot.socket._host : null;
-    const currentPort = bot?.entity?.username ? bot.socket._port : null;
-    
+    // Correctly access the remote address and port
+    const currentHost = bot?._client?.socket?.remoteAddress || null;
+    const currentPort = bot?._client?.socket?.remotePort || null;
+
+    // Check if connection info is available
     if (!currentHost || !currentPort) {
         return { success: false, message: "Cannot restart: Bot connection information not available" };
     }
-    
+
+    // Stop the bot first
     const result = stopBot();
     if (!result.success) {
         return result;
     }
-    
-    // Short delay before reconnecting
+
+    // Restart the bot after a delay
     setTimeout(() => {
         startBot(currentHost, currentPort);
     }, 1000);
-    
+
     return { success: true, message: "Bot is restarting..." };
 }
 
@@ -245,6 +248,23 @@ function killBot() {
         bot.chat("/kill");
         isDead = true;
         return { success: true, message: "Bot killed" };
+    } else {
+        return { success: false, message: "Bot is not connected" };
+    }
+}
+
+// Function to heal the bot (self-heal command)
+function healBot() {
+    if (bot && isConnected) {
+        try {
+            // Use the shorthand command for self-targeting with regeneration effect
+            // Effect ID 10 is regeneration, duration 10 seconds, amplifier 5 (regeneration VI)
+            bot.chat("/effect give @s minecraft:regeneration 10 5");
+            return { success: true, message: "Applied regeneration effect" };
+        } catch (err) {
+            console.error('Error executing healing command:', err);
+            return { success: false, message: "Failed to execute healing command" };
+        }
     } else {
         return { success: false, message: "Bot is not connected" };
     }
@@ -267,6 +287,25 @@ function respawnBot() {
 
 // Function to feed the bot
 function feedBot() {
+    if (bot && isConnected) {
+        try {
+            // First clear all effects to remove any active hunger effect
+            bot.chat("/effect clear @s");
+            
+            // Then apply saturation with longer duration (30 seconds to match hunger duration)
+            // Using high amplifier (50) to ensure full saturation
+            bot.chat("/effect give @s minecraft:saturation 30 50");
+            return { success: true, message: "Applied saturation effect and cleared negative effects" };
+        } catch (err) {
+            console.error('Error executing saturation command:', err);
+            return { success: false, message: "Failed to execute saturation command" };
+        }
+    } else {
+        return { success: false, message: "Bot is not connected" };
+    }
+}
+
+function feedBotFood() {
     if (bot && isConnected) {
         // Look for food items in the inventory
         const foodItems = bot.inventory.items().filter(item => 
@@ -301,9 +340,17 @@ function feedBot() {
 // Function to starve the bot (decrease food level if in creative/with permissions)
 function starveBot() {
     if (bot && isConnected) {
-        // Try using a command to reduce hunger (requires permissions)
-        bot.chat("/effect give @s minecraft:hunger 30 255");
-        return { success: true, message: "Applied hunger effect" };
+        try {
+            // First clear all effects to remove any active saturation
+            bot.chat("/effect clear @s");
+            
+            // Then apply hunger effect
+            bot.chat("/effect give @s minecraft:hunger 30 255");
+            return { success: true, message: "Applied hunger effect and cleared positive effects" };
+        } catch (err) {
+            console.error('Error executing hunger command:', err);
+            return { success: false, message: "Failed to execute hunger command" };
+        }
     } else {
         return { success: false, message: "Bot is not connected" };
     }
@@ -611,8 +658,10 @@ module.exports = {
     stopBot,
     restartBot,
     killBot,
+    healBot,
     respawnBot,
     feedBot,
+    feedBotFood,
     starveBot,
     setWeather,
     setTime,

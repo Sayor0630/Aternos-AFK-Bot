@@ -55,6 +55,13 @@ app.post('/kill-bot', (req, res) => {
     res.json(result);
 });
 
+// Route to heal the bot
+app.post('/heal-bot', (req, res) => {
+    const result = bot.healBot();
+    addToLog('action', `Attempted to heal bot: ${result.message}`);
+    res.json(result);
+});
+
 // Route to respawn the bot
 app.post('/respawn-bot', (req, res) => {
     const result = bot.respawnBot();
@@ -65,6 +72,12 @@ app.post('/respawn-bot', (req, res) => {
 // Route to feed the bot
 app.post('/feed-bot', (req, res) => {
     const result = bot.feedBot();
+    addToLog('action', `Attempted to feed bot: ${result.message}`);
+    res.json(result);
+});
+
+app.post('/feed-bot-food', (req, res) => {
+    const result = bot.feedBotFood();
     addToLog('action', `Attempted to feed bot: ${result.message}`);
     res.json(result);
 });
