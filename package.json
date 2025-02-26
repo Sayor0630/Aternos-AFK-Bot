@@ -9,12 +9,11 @@
     "author": "Sayor0603",
     "license": "MIT",
     "dependencies": {
-        "config": "^3.3.3",
-        "fs": "0.0.1-security",
-        "minecraft-protocol": "^1.54.0",
+        "cors": "^2.8.5",
+        "express": "^4.21.2",
         "mineflayer": "^4.26.0",
-        "mineflayer-blockfinder": "0.0.7",
-        "mineflayer-cmd": "^1.1.3"
+        "mineflayer-cmd": "^1.1.3",
+        "mineflayer-pathfinder": "^2.4.5"
     },
     "devDependencies": {
         "node": "^22.13.1"
