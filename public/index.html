@@ -131,12 +131,12 @@
         
         #alerts {
             position: fixed;
-            top: 20px;
+            bottom: 20px;  /* Changed from top: 20px to bottom: 20px */
             right: 20px;
             z-index: 9999;
             width: 350px;
         }
-        
+
         .alert {
             margin-bottom: 10px;
             padding: 15px;
@@ -417,15 +417,9 @@
                                 <div id="bot-z">Z= N/A</div>
                             </div>
                         </div>
-                        <div class="row mb-3">
-                            <div class="col-6">
-                                <label class="form-label">Weather</label>
-                                <div id="server-weather">N/A</div>
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label">Time</label>
-                                <div id="server-time">N/A</div>
-                            </div>
+                        <div class="mb-3 d-flex justify-content-between">
+                            <div id="server-weather">Weather = N/A</div>
+                            <div id="server-time">Time = N/A</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Auto Movement</label>

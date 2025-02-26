@@ -40,29 +40,44 @@ function parseServerAddress(address) {
 }
 
 // API Functions
+// Modify the callApi function to better handle backend connection errors
 async function callApi(endpoint, method = 'GET', data = null) {
-  try {
-    const options = {
-      method,
-      headers: {
-        'Content-Type': 'application/json'
+    try {
+      const options = {
+        method,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      };
+      
+      if (data) {
+        options.body = JSON.stringify(data);
       }
-    };
-    
-    if (data) {
-      options.body = JSON.stringify(data);
+      
+      const response = await fetch(`${API_URL}${endpoint}`, options);
+      const result = await response.json();
+      
+      return result;
+    } catch (error) {
+      console.error('API Error:', error);
+      
+      // Check if the error is due to network connectivity (backend not found)
+      if (error.message && (
+          error.message.includes('Failed to fetch') || 
+          error.message.includes('NetworkError') ||
+          error.message.includes('Network request failed'))) {
+        showMessage('Backend server not found. Please check if it\'s running.', 'danger');
+        
+        // Update connection status to show backend error
+        $('#connection-status').textContent = 'Backend Error';
+        $('#connection-status').className = 'badge badge-danger';
+      } else {
+        showMessage(`API Error: ${error.message}`, 'danger');
+      }
+      
+      return { success: false, message: error.message };
     }
-    
-    const response = await fetch(`${API_URL}${endpoint}`, options);
-    const result = await response.json();
-    
-    return result;
-  } catch (error) {
-    console.error('API Error:', error);
-    showMessage(`API Error: ${error.message}`, 'danger');
-    return { success: false, message: error.message };
   }
-}
 
 // Bot Control Functions
 async function startBot() {
@@ -80,6 +95,8 @@ async function startBot() {
   const result = await callApi('/start-bot', 'POST', { host, port });
   
   if (result.success) {
+    // Save server connection info to localStorage
+    localStorage.setItem('lastServerAddress', serverAddress);
     showMessage(`Bot connecting to ${host}:${port}`, 'success');
     startStatusUpdates();
     startLogUpdates();
@@ -96,6 +113,10 @@ async function stopBot() {
   if (result.success) {
     showMessage('Bot stopped', 'success');
     stopStatusUpdates();
+    stopLogUpdates();
+    resetStatsToDefault();
+    // Clear saved server connection info
+    localStorage.removeItem('lastServerAddress');
   } else {
     showMessage(`Failed to stop bot: ${result.message}`, 'danger');
   }
@@ -303,11 +324,11 @@ async function updateStatus() {
       
       // Update weather and time
       if (status.weather) {
-        $('#server-weather').textContent = status.weather.charAt(0).toUpperCase() + status.weather.slice(1);
+        $('#server-weather').textContent = `Weather = ${status.weather.charAt(0).toUpperCase() + status.weather.slice(1)}`;
       }
       
       if (status.serverTime) {
-        $('#server-time').textContent = status.serverTime;
+        $('#server-time').textContent = `Time = ${status.serverTime}`;
       }
       
       // Update inventory
@@ -351,8 +372,11 @@ async function updateStatus() {
         $('#dead-status').style.display = 'none';
       }
       
+      // Start update intervals if not already running
+      startUpdateIntervalsIfNeeded();
+      
     } else {
-      $('#connection-status').textContent = status.connectionStatus;
+      $('#connection-status').textContent = status.connectionStatus || 'Disconnected';
       $('#connection-status').className = 'badge badge-danger';
       
       $('#start-btn').disabled = false;
@@ -364,10 +388,14 @@ async function updateStatus() {
       if (status.connectionError) {
         showMessage(`Connection error: ${status.connectionError}`, 'danger');
       }
+      
+      // If we were previously connected but now disconnected, clear the intervals
+      stopUpdateIntervalsIfConnected();
     }
   } catch (error) {
     console.error('Status update error:', error);
     stopStatusUpdates();
+    stopLogUpdates();
     $('#connection-status').textContent = 'Error';
     $('#connection-status').className = 'badge badge-danger';
     $('#start-btn').disabled = false;
@@ -375,55 +403,80 @@ async function updateStatus() {
   }
 }
 
-async function updateLogs() {
-  try {
-    const logs = await callApi('/log-history');
-    
-    if (!logs || !logs.length) return;
-    
-    const logHTML = logs.map(log => {
-      let logClass = '';
-      let icon = '';
-      
-      switch(log.type) {
-        case 'system':
-          logClass = 'text-muted';
-          icon = '<i class="fas fa-cog"></i>';
-          break;
-        case 'chat':
-          logClass = 'text-primary';
-          icon = '<i class="fas fa-comment"></i>';
-          break;
-        case 'command':
-          logClass = 'text-warning';
-          icon = '<i class="fas fa-terminal"></i>';
-          break;
-        case 'action':
-          logClass = 'text-success';
-          icon = '<i class="fas fa-play"></i>';
-          break;
-        case 'movement':
-          logClass = 'text-info';
-          icon = '<i class="fas fa-walking"></i>';
-          break;
-        default:
-          icon = '<i class="fas fa-info-circle"></i>';
-      }
-      
-      const time = new Date(log.timestamp).toLocaleTimeString();
-      
-      return `<div class="log-entry ${logClass}">
-                <span class="log-time">${time}</span>
-                <span class="log-icon">${icon}</span>
-                <span class="log-message">${log.message}</span>
-              </div>`;
-    }).join('');
-    
-    $('#server-logs').innerHTML = logHTML;
-  } catch (error) {
-    console.error('Log update error:', error);
+// Start update intervals if needed
+function startUpdateIntervalsIfNeeded() {
+  if (!statusUpdateInterval) {
+    statusUpdateInterval = setInterval(updateStatus, 2000);
+  }
+  
+  if (!logUpdateInterval) {
+    logUpdateInterval = setInterval(updateLogs, 5000);
   }
 }
+
+// Stop update intervals if we were connected
+function stopUpdateIntervalsIfConnected() {
+  if (statusUpdateInterval || logUpdateInterval) {
+    stopStatusUpdates();
+    stopLogUpdates();
+  }
+}
+
+async function updateLogs() {
+    try {
+      const logs = await callApi('/log-history');
+      
+      if (!logs || !logs.length) return;
+      
+      // Sort logs chronologically (oldest to newest)
+      const sortedLogs = [...logs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      
+      const logHTML = sortedLogs.map(log => {
+        let logClass = '';
+        let icon = '';
+        
+        switch(log.type) {
+          case 'system':
+            logClass = 'text-muted';
+            icon = '<i class="fas fa-cog"></i>';
+            break;
+          case 'chat':
+            logClass = 'text-primary';
+            icon = '<i class="fas fa-comment"></i>';
+            break;
+          case 'command':
+            logClass = 'text-warning';
+            icon = '<i class="fas fa-terminal"></i>';
+            break;
+          case 'action':
+            logClass = 'text-success';
+            icon = '<i class="fas fa-play"></i>';
+            break;
+          case 'movement':
+            logClass = 'text-info';
+            icon = '<i class="fas fa-walking"></i>';
+            break;
+          default:
+            icon = '<i class="fas fa-info-circle"></i>';
+        }
+        
+        const time = new Date(log.timestamp).toLocaleTimeString();
+        
+        return `<div class="log-entry ${logClass}">
+                  <span class="log-time">${time}</span>
+                  <span class="log-icon">${icon}</span>
+                  <span class="log-message">${log.message}</span>
+                </div>`;
+      }).join('');
+      
+      $('#server-logs').innerHTML = logHTML;
+      
+      // Always scroll to the bottom after updating logs
+      $('#server-logs').scrollTop = $('#server-logs').scrollHeight;
+    } catch (error) {
+      console.error('Log update error:', error);
+    }
+  }
 
 function startStatusUpdates() {
   if (!statusUpdateInterval) {
@@ -467,8 +520,8 @@ function resetStatsToDefault() {
   $('#bot-z').textContent = 'Z= N/A';
   
   // Reset weather and time
-  $('#server-weather').textContent = 'N/A';
-  $('#server-time').textContent = 'N/A';
+  $('#server-weather').textContent = 'Weather = N/A';
+  $('#server-time').textContent = 'Time = N/A';
   
   // Reset inventory
   $('#inventory-list').innerHTML = '<div class="text-muted">No data available</div>';
@@ -479,6 +532,35 @@ function resetStatsToDefault() {
   // Reset auto-movement
   $('#auto-movement-status').textContent = 'N/A';
   $('#auto-movement-status').className = 'badge badge-secondary';
+}
+
+// Check if the bot is connected on page load/refresh
+async function checkInitialConnection() {
+  try {
+    const status = await callApi('/bot-status');
+    
+    // If the bot is online, start update intervals
+    if (status.online) {
+      // Fill in the server address if it's saved in localStorage
+      const savedAddress = localStorage.getItem('lastServerAddress');
+      if (savedAddress) {
+        $('#server-host').value = savedAddress;
+      }
+      
+      startStatusUpdates();
+      startLogUpdates();
+    } else {
+      // If we have a saved server address but not connected, attempt to connect
+      const savedAddress = localStorage.getItem('lastServerAddress');
+      if (savedAddress) {
+        $('#server-host').value = savedAddress;
+        // Optional: auto-connect if there's a saved address
+        // startBot();
+      }
+    }
+  } catch (error) {
+    console.error('Initial connection check error:', error);
+  }
 }
 
 // Initialize the app
@@ -497,6 +579,7 @@ function initApp() {
   $('#kill-btn').addEventListener('click', killBot);
   $('#respawn-btn').addEventListener('click', respawnBot);
   $('#feed-btn').addEventListener('click', feedBot);
+  $('#feed-btn-inv').addEventListener('click', feedBot);
   $('#refresh-stats').addEventListener('click', refreshBotStats);
   
   $('#weather-clear').addEventListener('click', () => setWeather('clear'));
@@ -525,18 +608,29 @@ function initApp() {
   
   $('#toggle-auto-movement').addEventListener('click', toggleAutoMovement);
   $('#collect-items-btn').addEventListener('click', collectItems);
+  $('#collect-items-btn-inv').addEventListener('click', collectItems);
   
   // Update placeholders for server input
   $('#server-host').placeholder = "e.g. server.aternos.me:12345";
   
-  // Remove the port input field since we're now handling combined format
-  const portInput = $('#server-port');
-  if (portInput) {
-    portInput.parentElement.remove();
-  }
-  
-  // Check initial connection status
-  updateStatus();
+  // Check initial connection status and start updates if connected
+  checkInitialConnection();
+
+  // Check connection status periodically even when not connected
+  // This helps to detect if the server has started the bot separately
+  setInterval(async () => {
+    if (!statusUpdateInterval) {
+      await checkInitialConnection();
+    }
+  }, 10000);
+
+  // Add window event listener to handle page visibility changes
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // When page becomes visible again, check connection
+      checkInitialConnection();
+    }
+  });
 }
 
 // Wait for DOM to be fully loaded

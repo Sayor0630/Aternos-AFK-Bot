@@ -22,6 +22,41 @@ let movementInterval;
 let isDead = false;
 let lastFoodLevel = 20; // Track food level changes
 
+// Function to fix vehicle passengers issue
+function fixVehiclePassengersIssue() {
+    if (bot && bot._client) {
+        // Override the mount handling to check if vehicle exists
+        const originalOnMount = bot._client.on;
+        bot._client.on = function(event, handler) {
+            if (event === 'mount') {
+                return originalOnMount.call(this, event, (packet) => {
+                    try {
+                        // Safety wrapper for the mount handler
+                        const passengerEntity = bot.entities[packet.entityId];
+                        const vehicleEntity = bot.entities[packet.vehicleId];
+                        
+                        // Only process if both entities exist
+                        if (passengerEntity && vehicleEntity) {
+                            // Ensure vehicle has passengers array
+                            if (!vehicleEntity.passengers) {
+                                vehicleEntity.passengers = [];
+                            }
+                            
+                            // Continue with original logic
+                            handler(packet);
+                        } else {
+                            console.log('Warning: Skipping mount event for missing entities');
+                        }
+                    } catch (err) {
+                        console.error('Error in mount handler:', err);
+                    }
+                });
+            }
+            return originalOnMount.call(this, event, handler);
+        };
+    }
+}
+
 // Function to start the bot with the correct version
 function startBot(host, port) {
     if (isConnected) {
@@ -58,7 +93,9 @@ function startBot(host, port) {
     });
 
     // Event when bot logs in
-    bot.on('login', () => {
+    bot.once('login', () => {
+        fixVehiclePassengersIssue();
+        
         isConnected = true;
         connectionStatus = 'connected';
         isDead = false;
@@ -102,7 +139,7 @@ function startBot(host, port) {
         // Stop auto movement when dead
         if (isAutoMoving) {
             stopAutoMovement();
-            isAutoMoving = false; // Will be restarted on respawn
+            isAutoMoving = true; // Will be restarted on respawn
         }
     });
 
