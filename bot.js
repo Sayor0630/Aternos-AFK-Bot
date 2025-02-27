@@ -1,60 +1,52 @@
+// bot.js
 const mineflayer = require("mineflayer");
+require("dotenv").config();
 const cmd = require("mineflayer-cmd").plugin;
 const pathfinder = require("mineflayer-pathfinder").pathfinder;
 const { GoalBlock } = require("mineflayer-pathfinder").goals;
+const db = require("./db");
 
-// Declare bot variable and connection status
 let bot;
 let isConnected = false;
-let connectionStatus = "disconnected"; // 'connecting', 'connected', 'disconnected', 'error'
+let connectionStatus = "disconnected";
 let connectionError = "";
 let lastChatTime = 0;
 let botInventory = [];
 let nearbyEntities = [];
 let serverTime = "unknown";
 let weather = "unknown";
-
-// Bot movement behavior variables
 let isAutoMoving = false;
 let movementInterval;
-
-// Bot state variables
 let isDead = false;
-let lastFoodLevel = 20; // Track food level changes
+let lastFoodLevel = 20;
 
-// Function to fix vehicle passengers issue with error handling
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAY = 5000;
+
 function fixVehiclePassengersIssue() {
   if (bot && bot._client) {
-    // Save the original entity plugin handler
     const originalEntityHandler = bot.entities ? bot.entities.onMount : null;
-
-    // Override the mount handling at the client level
     const originalOnMount = bot._client.on;
     bot._client.on = function (event, handler) {
       if (event === "mount") {
         return originalOnMount.call(this, event, (packet) => {
           try {
-            // Call the original handler in a try-catch block
             handler(packet);
           } catch (err) {
-            // Just log the error and continue
             console.log("Ignored mount error:", err.message);
           }
         });
       }
       return originalOnMount.call(this, event, handler);
     };
-
-    // Also patch the mineflayer entities plugin if possible
     if (bot.entities && typeof bot.entities.onMount === "function") {
       bot.entities.onMount = function (packet) {
         try {
-          // Try to use the original handler
           if (originalEntityHandler) {
             originalEntityHandler.call(bot.entities, packet);
           }
         } catch (err) {
-          // Just log the error and continue without crashing
           console.log("Ignored entity mount error:", err.message);
         }
       };
@@ -62,29 +54,31 @@ function fixVehiclePassengersIssue() {
   }
 }
 
-// Function to start the bot with the correct version
-function startBot(host, port) {
-  if (isConnected) {
-    console.log("Bot is already connected.");
-    return { success: false, message: "Bot is already connected" };
+function startBot(host, port, onLoginCallback) {
+  if (isConnected || connectionStatus === "connecting") {
+    console.log("Bot is already connected or connecting.");
+    return {
+      success: false,
+      message: "Bot is already connected or connecting",
+    };
   }
 
   console.log(`Starting bot with host: ${host}, port: ${port}`);
   connectionStatus = "connecting";
   connectionError = "";
-
-  const minecraftVersion = "1.20.1";
+  reconnectAttempts = 0;
 
   bot = mineflayer.createBot({
     host: host,
-    port: port,
-    username: "Lalkuthi_Server",
-    version: minecraftVersion,
-    protocolVersion: 764,
-    checkTimeoutInterval: 30000,
+    port: parseInt(port),
+    username: process.env.BOT_USERNAME,
+    version: process.env.MINECRAFT_VERSION,
+    protocolVersion: parseInt(process.env.PROTOCOL_VERSION),
+    checkTimeoutInterval: 60000,
     keepAlive: true,
   });
 
+  bot._intentionalDisconnect = false;
   bot.loadPlugin(cmd);
   bot.loadPlugin(pathfinder);
 
@@ -98,64 +92,51 @@ function startBot(host, port) {
     isConnected = true;
     connectionStatus = "connected";
     isDead = false;
+    reconnectAttempts = 0;
     console.log("Bot logged in");
-    // Save connection details here
-    const server = require("./server"); // Import server.js to access saveConnectionDetails
-    server.saveConnectionDetails(host, port);
+    if (onLoginCallback) onLoginCallback();
     startAutoMovement();
   });
 
-  // Event when bot disconnects
   bot.on("end", (reason) => {
     isConnected = false;
     connectionStatus = "disconnected";
     console.log("Bot disconnected from server. Reason:", reason);
-
-    // Stop automatic movement
     stopAutoMovement();
+    if (!bot._intentionalDisconnect) attemptReconnect();
   });
 
-  // Event when the bot encounters an error
   bot.on("error", (err) => {
     isConnected = false;
     connectionStatus = "error";
     connectionError = err.message;
     console.error("Bot error:", err);
-
-    // Stop automatic movement
     stopAutoMovement();
+    attemptReconnect();
   });
 
-  // Event when the bot spawns in the game world
   bot.once("spawn", () => {
     console.log("Bot has spawned");
     isDead = false;
   });
 
-  // Event when the bot dies
   bot.on("death", () => {
     console.log("Bot has died");
     isDead = true;
   });
 
-  // Event for respawning
   bot.on("spawn", () => {
     if (isDead) {
       console.log("Bot has respawned");
       isDead = false;
-      // Restart auto movement if it was on before
-      if (isAutoMoving) {
-        startAutoMovement();
-      }
+      bot._client.write("client_command", { payload: 0 });
+      if (isAutoMoving) startAutoMovement();
     }
   });
 
-  // Event when the bot chats
   bot.on("chat", (username, message) => {
     lastChatTime = Date.now();
     console.log(`[CHAT] ${username}: ${message}`);
-
-    // Respond to certain chat commands
     if (
       message.toLowerCase().includes("hello bot") &&
       username !== bot.username
@@ -164,42 +145,29 @@ function startBot(host, port) {
     }
   });
 
-  // Event when bot's health changes
   bot.on("health", () => {
     console.log(`Bot health updated: ${bot.health}`);
-
-    // Track food level changes
     if (bot.food !== lastFoodLevel) {
       lastFoodLevel = bot.food;
       console.log(`Bot food level: ${bot.food}`);
     }
   });
 
-  // Event when rain starts or stops
   bot.on("rain", () => {
     weather = bot.isRaining ? "raining" : "clear";
     console.log(`Weather changed: ${weather}`);
   });
 
-  // Event for tracking nearby entities
-  bot.on("entityUpdate", (entity) => {
-    updateNearbyEntities();
-  });
-
-  // Update inventory when it changes
-  bot.on("inventoryChanged", () => {
-    updateInventory();
-  });
+  bot.on("entityUpdate", updateNearbyEntities);
+  bot.on("inventoryChanged", updateInventory);
 
   return { success: true, message: "Bot connecting to server" };
 }
 
-// Function to stop the bot
 function stopBot() {
   if (bot && isConnected) {
-    // Stop automatic movement
     stopAutoMovement();
-
+    bot._intentionalDisconnect = true;
     bot.quit();
     isConnected = false;
     connectionStatus = "disconnected";
@@ -211,13 +179,10 @@ function stopBot() {
   }
 }
 
-// Function to restart the bot
 function restartBot() {
-  // Correctly access the remote address and port
   const currentHost = bot?._client?.socket?.remoteAddress || null;
   const currentPort = bot?._client?.socket?.remotePort || null;
 
-  // Check if connection info is available
   if (!currentHost || !currentPort) {
     return {
       success: false,
@@ -225,13 +190,9 @@ function restartBot() {
     };
   }
 
-  // Stop the bot first
   const result = stopBot();
-  if (!result.success) {
-    return result;
-  }
+  if (!result.success) return result;
 
-  // Restart the bot after a delay
   setTimeout(() => {
     startBot(currentHost, currentPort);
   }, 1000);
@@ -239,13 +200,9 @@ function restartBot() {
   return { success: true, message: "Bot is restarting..." };
 }
 
-// Function to kill the bot (self-harm command)
 function killBot() {
   if (bot && isConnected) {
-    if (isDead) {
-      return { success: false, message: "Bot is already dead" };
-    }
-
+    if (isDead) return { success: false, message: "Bot is already dead" };
     bot.chat("/kill");
     isDead = true;
     return { success: true, message: "Bot killed" };
@@ -254,12 +211,9 @@ function killBot() {
   }
 }
 
-// Function to heal the bot (self-heal command)
 function healBot() {
   if (bot && isConnected) {
     try {
-      // Use the shorthand command for self-targeting with regeneration effect
-      // Effect ID 10 is regeneration, duration 10 seconds, amplifier 5 (regeneration VI)
       bot.chat("/effect give @s minecraft:regeneration 10 5");
       return { success: true, message: "Applied regeneration effect" };
     } catch (err) {
@@ -271,30 +225,20 @@ function healBot() {
   }
 }
 
-// Function to respawn the bot
 function respawnBot() {
   if (bot && isConnected) {
-    if (!isDead) {
-      return { success: false, message: "Bot is not dead" };
-    }
-
-    bot._client.write("client_command", { payload: 0 }); // 0 = respawn
-    isDead = false;
+    if (!isDead) return { success: false, message: "Bot is not dead" };
+    bot._client.write("client_command", { payload: 0 });
     return { success: true, message: "Bot respawning" };
   } else {
     return { success: false, message: "Bot is not connected" };
   }
 }
 
-// Function to feed the bot
 function feedBot() {
   if (bot && isConnected) {
     try {
-      // First clear all effects to remove any active hunger effect
       bot.chat("/effect clear @s");
-
-      // Then apply saturation with longer duration (30 seconds to match hunger duration)
-      // Using high amplifier (50) to ensure full saturation
       bot.chat("/effect give @s minecraft:saturation 30 50");
       return {
         success: true,
@@ -314,7 +258,6 @@ function feedBot() {
 
 function feedBotFood() {
   if (bot && isConnected) {
-    // Look for food items in the inventory
     const foodItems = bot.inventory
       .items()
       .filter((item) =>
@@ -342,11 +285,10 @@ function feedBotFood() {
         ].includes(item.name)
       );
 
-    if (foodItems.length === 0) {
+    if (foodItems.length === 0)
       return { success: false, message: "No food found in inventory" };
-    }
 
-    // Equip and eat the first food item
+    bot.chat("/effect clear @s");
     bot
       .equip(foodItems[0], "hand")
       .then(() => {
@@ -358,20 +300,19 @@ function feedBotFood() {
         console.error("Error equipping food:", err);
       });
 
-    return { success: true, message: `Eating ${foodItems[0].name}` };
+    return {
+      success: true,
+      message: `Eating ${foodItems[0].name} and cleared negative effects`,
+    };
   } else {
     return { success: false, message: "Bot is not connected" };
   }
 }
 
-// Function to starve the bot (decrease food level if in creative/with permissions)
 function starveBot() {
   if (bot && isConnected) {
     try {
-      // First clear all effects to remove any active saturation
       bot.chat("/effect clear @s");
-
-      // Then apply hunger effect
       bot.chat("/effect give @s minecraft:hunger 30 255");
       return {
         success: true,
@@ -386,26 +327,18 @@ function starveBot() {
   }
 }
 
-// Function to change weather (requires op permissions)
 function setWeather(weatherType) {
   if (bot && isConnected) {
-    if (weatherType === "clear") {
-      bot.chat("/weather clear");
-    } else if (weatherType === "rain") {
-      bot.chat("/weather rain");
-    } else if (weatherType === "thunder") {
-      bot.chat("/weather thunder");
-    } else {
-      return { success: false, message: "Invalid weather type" };
-    }
-
+    if (weatherType === "clear") bot.chat("/weather clear");
+    else if (weatherType === "rain") bot.chat("/weather rain");
+    else if (weatherType === "thunder") bot.chat("/weather thunder");
+    else return { success: false, message: "Invalid weather type" };
     return { success: true, message: `Setting weather to ${weatherType}` };
   } else {
     return { success: false, message: "Bot is not connected" };
   }
 }
 
-// Function to set game time (requires op permissions)
 function setTime(timeValue) {
   if (bot && isConnected) {
     bot.chat(`/time set ${timeValue}`);
@@ -415,55 +348,59 @@ function setTime(timeValue) {
   }
 }
 
-// Function to start automatic movement
+async function attemptReconnect() {
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.log("Reconnection attempts exhausted.");
+    return;
+  }
+
+  const connectionDetails = await db.getConnectionDetails();
+  if (connectionDetails && !connectionDetails.userDisconnected) {
+    reconnectAttempts++;
+    console.log(
+      `Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`
+    );
+    setTimeout(() => {
+      if (!isConnected && connectionStatus !== "connecting") {
+        startBot(connectionDetails.ip, connectionDetails.port);
+      }
+    }, RECONNECT_DELAY * reconnectAttempts);
+  }
+}
+
 function startAutoMovement() {
   if (!isAutoMoving && bot && isConnected) {
     isAutoMoving = true;
-
-    // Execute random movement every 10-15 seconds
     movementInterval = setInterval(() => {
       try {
         if (bot && bot.entity) {
-          // Random chance to look around or move
           const action = Math.random();
-
           if (action < 0.3) {
-            // Look around randomly
             bot.look(
               Math.random() * Math.PI * 2,
               Math.random() * Math.PI - Math.PI / 2
             );
           } else if (action < 0.7) {
-            // Try to find a safe place to move to
             const currentPos = bot.entity.position;
-
-            // Get blocks around the bot to check if they're safe to walk on
-            const offset = 5; // Maximum distance to move
-            const dx = Math.floor(Math.random() * offset * 2) - offset;
-            const dz = Math.floor(Math.random() * offset * 2) - offset;
-
+            const dx = Math.floor(Math.random() * 10) - 5;
+            const dz = Math.floor(Math.random() * 10) - 5;
             const targetX = Math.floor(currentPos.x) + dx;
             const targetZ = Math.floor(currentPos.z) + dz;
-
-            // Try to find a good Y position
             bot.pathfinder.setGoal(
               new GoalBlock(targetX, Math.floor(currentPos.y), targetZ)
             );
           } else {
-            // Collect nearby items
             collectItems();
           }
         }
       } catch (err) {
         console.error("Error in automatic movement:", err);
       }
-    }, Math.random() * 5000 + 10000); // Random interval between 10-15 seconds
-
+    }, Math.random() * 5000 + 10000);
     console.log("Automatic movement started");
   }
 }
 
-// Function to stop automatic movement
 function stopAutoMovement() {
   if (isAutoMoving) {
     clearInterval(movementInterval);
@@ -472,7 +409,6 @@ function stopAutoMovement() {
   }
 }
 
-// Function to send a chat message
 function sendChatMessage(message) {
   if (bot && isConnected) {
     bot.chat(message);
@@ -484,7 +420,6 @@ function sendChatMessage(message) {
   }
 }
 
-// Function to execute a command
 function executeCommand(command) {
   if (bot && isConnected) {
     bot.chat(`/${command}`);
@@ -495,13 +430,11 @@ function executeCommand(command) {
   }
 }
 
-// Function to get the bot status
 function getBotStatus() {
   if (bot && isConnected) {
     updateServerTime();
     updateInventory();
     updateNearbyEntities();
-
     return {
       online: true,
       connectionStatus,
@@ -513,20 +446,19 @@ function getBotStatus() {
       weather,
       serverTime,
       experience: bot.experience,
-      inventory: botInventory.slice(0, 9), // First 9 slots (hotbar)
+      inventory: botInventory.slice(0, 9),
       nearbyEntities,
       isAutoMoving,
       isDead,
     };
   }
-  return {
-    online: false,
-    connectionStatus,
-    connectionError,
-  };
+  return { online: false, connectionStatus, connectionError };
 }
 
-// Function to get the bot's current location (x, y, z)
+function getReconnectAttempts() {
+  return reconnectAttempts;
+}
+
 function getBotLocation() {
   if (bot && isConnected && bot.entity && bot.entity.position) {
     const { x, y, z } = bot.entity.position;
@@ -535,51 +467,32 @@ function getBotLocation() {
   return { x: null, y: null, z: null };
 }
 
-// Function to get the bot's current health
 function getBotHealth() {
   if (bot && isConnected) {
-    return {
-      health: bot.health,
-      food: bot.food,
-      oxygen: bot.oxygenLevel,
-    };
+    return { health: bot.health, food: bot.food, oxygen: bot.oxygenLevel };
   }
   return { health: null, food: null, oxygen: null };
 }
 
-// Function to get the bot's current action (moving, chatting, idle, etc.)
 function getBotAction() {
   if (bot && isConnected && bot.entity) {
-    if (isDead) {
-      return { action: "dead" };
-    }
-    // If automatic movement is enabled
-    else if (isAutoMoving) {
-      return { action: "auto-moving" };
-    }
-    // If the bot has chatted in the last 5 seconds
-    else if (Date.now() - lastChatTime < 5000) {
-      return { action: "chatting" };
-    }
+    if (isDead) return { action: "dead" };
+    else if (isAutoMoving) return { action: "auto-moving" };
+    else if (Date.now() - lastChatTime < 5000) return { action: "chatting" };
     return { action: "idle" };
   }
   return { action: "offline" };
 }
 
-// Function to update the server time
 function updateServerTime() {
   if (bot && isConnected) {
     try {
-      // Get time of day (0-24000)
       const timeOfDay = bot.time.timeOfDay;
-      // Convert to hours (0-24)
       const hours = Math.floor((timeOfDay / 24000) * 24);
       const minutes = Math.floor(((timeOfDay / 24000) * 24 * 60) % 60);
       serverTime = `${hours.toString().padStart(2, "0")}:${minutes
         .toString()
         .padStart(2, "0")}`;
-
-      // Update weather
       weather = bot.isRaining ? "raining" : "clear";
     } catch (e) {
       serverTime = "unknown";
@@ -587,7 +500,6 @@ function updateServerTime() {
   }
 }
 
-// Function to update the bot's inventory
 function updateInventory() {
   if (bot && isConnected && bot.inventory) {
     try {
@@ -604,18 +516,13 @@ function updateInventory() {
   }
 }
 
-// Function to update nearby entities
 function updateNearbyEntities(radius = 30) {
-  // Check if bot position is available
   if (!bot || !bot.entity || !bot.entity.position) {
     nearbyEntities = [];
     return;
   }
 
-  // Get all entities
   const allEntities = Object.values(bot.entities);
-
-  // Define relevant entity types
   const relevantTypes = [
     "player",
     "animal",
@@ -625,12 +532,9 @@ function updateNearbyEntities(radius = 30) {
     "mob",
     "living",
   ];
-
-  // Set up bot position and ID
   const botPosition = bot.entity.position;
   const botId = bot.entity.id;
 
-  // Process entities: filter, calculate distance once, and format
   nearbyEntities = allEntities
     .filter((entity) => entity.type && relevantTypes.includes(entity.type))
     .map((entity) => {
@@ -651,23 +555,17 @@ function updateNearbyEntities(radius = 30) {
         entity !== null && entity.id !== botId && entity.distance <= radius
     )
     .slice(0, 10)
-    .map((entity) => ({
-      ...entity,
-      distance: entity.distance.toFixed(1),
-    }));
+    .map((entity) => ({ ...entity, distance: entity.distance.toFixed(1) }));
 }
 
-// Function to collect nearby items
 function collectItems() {
   if (bot && isConnected) {
     const items = Object.values(bot.entities).filter(
       (e) => e.type === "object" && e.objectType === "Item"
     );
-    if (items.length === 0) {
+    if (items.length === 0)
       return { success: false, message: "No items found nearby" };
-    }
 
-    // Find the closest item
     let closest = null;
     let closestDistance = Number.MAX_VALUE;
     items.forEach((item) => {
@@ -695,7 +593,6 @@ function collectItems() {
   return { success: false, message: "Bot is not connected" };
 }
 
-// Function to toggle automatic movement
 function toggleAutoMovement() {
   if (bot && isConnected) {
     if (isAutoMoving) {
@@ -709,7 +606,6 @@ function toggleAutoMovement() {
   return { success: false, message: "Bot is not connected" };
 }
 
-// Function to get the connection status
 function getConnectionStatus() {
   return {
     isConnected,
@@ -735,11 +631,12 @@ module.exports = {
   sendChatMessage,
   executeCommand,
   getBotStatus,
+  getReconnectAttempts,
   getBotLocation,
   getBotHealth,
   getBotAction,
   getConnectionStatus,
   collectItems,
   toggleAutoMovement,
-  isConnected, // Export connection status for debugging purposes
+  isConnected,
 };

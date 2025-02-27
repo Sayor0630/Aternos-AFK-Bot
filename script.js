@@ -1,12 +1,9 @@
-// Bot Controller Script
-
-// Configuration
-const API_URL = "https://aternos-afk-bot-79in.onrender.com"; // Change this to your backend URL if needed
+const API_URL = "https://aternos-afk-bot-79in.onrender.com";
 let statusUpdateInterval = null;
 let logUpdateInterval = null;
-let backendStatus = "disconnected"; // Possible values: "disconnected", "connecting", "connected"
+let backendStatus = "disconnected";
+let latestStatus = null; // Added to store the latest bot status
 
-// DOM Helper Functions
 function $(selector) {
   return document.querySelector(selector);
 }
@@ -41,15 +38,9 @@ function showMessage(message, type = "info") {
   }, 5000);
 }
 
-// Update Backend Status Display
 function updateBackendStatusDisplay() {
   const statusElement = $("#backend-status");
-  if (!statusElement) {
-    console.warn(
-      "Backend status element (#backend-status) not found in HTML. Please add it."
-    );
-    return;
-  }
+  if (!statusElement) return;
   switch (backendStatus) {
     case "connected":
       statusElement.textContent = "Connected";
@@ -66,7 +57,6 @@ function updateBackendStatusDisplay() {
   }
 }
 
-// Parse server address and port from combined format
 function parseServerAddress(address) {
   if (!address) return { host: "", port: 25565 };
   if (address.includes(":")) {
@@ -77,7 +67,6 @@ function parseServerAddress(address) {
   return { host: address, port: 25565 };
 }
 
-// API Functions
 async function callApi(endpoint, method = "GET", data = null) {
   try {
     const options = {
@@ -101,14 +90,12 @@ async function callApi(endpoint, method = "GET", data = null) {
         "danger"
       );
     } else {
-      console.error("API Error:", error);
       showMessage(`API Error: ${error.message}`, "danger");
     }
     return { success: false, message: error.message };
   }
 }
 
-// Check Backend Availability
 async function checkBackendAvailability() {
   backendStatus = "connecting";
   updateBackendStatusDisplay();
@@ -137,7 +124,6 @@ async function checkBackendAvailability() {
   }
 }
 
-// Bot Control Functions
 async function startBot() {
   const serverAddress = $("#server-host").value.trim();
   const { host, port } = parseServerAddress(serverAddress);
@@ -160,6 +146,7 @@ async function startBot() {
     $("#start-btn").disabled = false;
     $("#start-btn").textContent = "Connect Bot";
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function stopBot() {
@@ -176,11 +163,12 @@ async function stopBot() {
     $("#start-btn").textContent = "Connect Bot";
     $("#stop-btn").disabled = true;
     $("#restart-btn").disabled = true;
-    $("#server-host").disabled = false; // Re-enable input on stop
+    $("#server-host").disabled = false;
     localStorage.removeItem("lastServerAddress");
   } else {
     showMessage(`Failed to stop bot: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function restartBot() {
@@ -190,6 +178,7 @@ async function restartBot() {
   } else {
     showMessage(`Failed to restart bot: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function killBot() {
@@ -199,6 +188,7 @@ async function killBot() {
   } else {
     showMessage(`Failed to kill bot: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function healBot() {
@@ -208,6 +198,7 @@ async function healBot() {
   } else {
     showMessage(`Failed to heal bot: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function respawnBot() {
@@ -217,6 +208,7 @@ async function respawnBot() {
   } else {
     showMessage(`Failed to respawn bot: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function feedBot() {
@@ -226,6 +218,7 @@ async function feedBot() {
   } else {
     showMessage(`Failed to feed bot: ${result.message}`, "warning");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function feedBotFood() {
@@ -235,6 +228,7 @@ async function feedBotFood() {
   } else {
     showMessage(`Failed to feed bot: ${result.message}`, "warning");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function starveBot() {
@@ -244,6 +238,7 @@ async function starveBot() {
   } else {
     showMessage(`Failed to starve bot: ${result.message}`, "warning");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function setWeather(weatherType) {
@@ -253,6 +248,7 @@ async function setWeather(weatherType) {
   } else {
     showMessage(`Failed to set weather: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function setTime(timeValue) {
@@ -262,6 +258,7 @@ async function setTime(timeValue) {
   } else {
     showMessage(`Failed to set time: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function teleportBot() {
@@ -278,6 +275,7 @@ async function teleportBot() {
   } else {
     showMessage(`Failed to teleport: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function sendChat() {
@@ -296,9 +294,9 @@ async function sendChat() {
   } else {
     showMessage(`Failed to send message: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
-// New function to update command button states
 function updateCommandButtonStates() {
   const commandInputs = Array.from(
     $("#command-list").querySelectorAll(".command-input")
@@ -431,6 +429,7 @@ async function executeCommands() {
     executeBtn.disabled = false;
     executeBtn.textContent = "Execute";
     updateCommandButtonStates();
+    setTimeout(updateStatus, 500); // Immediate refresh after all commands
   }
 }
 
@@ -453,6 +452,7 @@ async function toggleAutoMovement() {
   } else {
     showMessage(`Failed to toggle auto movement: ${result.message}`, "danger");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function collectItems() {
@@ -462,6 +462,7 @@ async function collectItems() {
   } else {
     showMessage(`Failed to collect items: ${result.message}`, "warning");
   }
+  setTimeout(updateStatus, 500); // Immediate refresh after action
 }
 
 async function refreshBotStats() {
@@ -469,13 +470,13 @@ async function refreshBotStats() {
   await updateStatus();
 }
 
-// Status Updates
 async function updateStatus() {
   if (backendStatus !== "connected") return;
   try {
     const status = await callApi("/bot-status");
-    const connectionStatus = await callApi("/connection-status"); // Get detailed connection status
-    if (status.online && connectionStatus.isConnected) {
+    latestStatus = status; // Store the latest status
+
+    if (status.online) {
       enableAllCards();
       $("#connection-status").textContent = "Connected";
       $("#connection-status").className = "badge badge-success";
@@ -484,14 +485,12 @@ async function updateStatus() {
       $("#stop-btn").disabled = false;
       $("#restart-btn").disabled = false;
 
-      // Disable and update server-host input with connected IP:port
       const lastServerAddress = localStorage.getItem("lastServerAddress");
       if (lastServerAddress) {
         $("#server-host").value = lastServerAddress;
-        $("#server-host").disabled = true; // Disable input when connected
+        $("#server-host").disabled = true;
       }
 
-      // Update health bar
       if (status.health !== undefined) {
         const healthPercent = Math.max(
           0,
@@ -499,16 +498,14 @@ async function updateStatus() {
         );
         $("#health-bar").style.width = `${healthPercent}%`;
         $("#health-value").textContent = `${status.health.toFixed(1)}/20`;
-        if (healthPercent > 60) {
-          $("#health-bar").className = "progress-bar bg-success";
-        } else if (healthPercent > 30) {
-          $("#health-bar").className = "progress-bar bg-warning";
-        } else {
-          $("#health-bar").className = "progress-bar bg-danger";
-        }
+        $("#health-bar").className =
+          healthPercent > 60
+            ? "progress-bar bg-success"
+            : healthPercent > 30
+            ? "progress-bar bg-warning"
+            : "progress-bar bg-danger";
       }
 
-      // Update food bar
       if (status.food !== undefined) {
         const foodPercent = Math.max(
           0,
@@ -516,26 +513,21 @@ async function updateStatus() {
         );
         $("#food-bar").style.width = `${foodPercent}%`;
         $("#food-value").textContent = `${status.food.toFixed(1)}/20`;
-        if (foodPercent > 60) {
-          $("#food-bar").className = "progress-bar bg-success";
-        } else if (foodPercent > 30) {
-          $("#food-bar").className = "progress-bar bg-warning";
-        } else {
-          $("#food-bar").className = "progress-bar bg-danger";
-        }
+        $("#food-bar").className =
+          foodPercent > 60
+            ? "progress-bar bg-success"
+            : foodPercent > 30
+            ? "progress-bar bg-warning"
+            : "progress-bar bg-danger";
       }
 
-      // Update position
       if (status.location) {
         $("#bot-x").textContent = `X= ${status.location.x.toFixed(1)}`;
         $("#bot-y").textContent = `Y= ${status.location.y.toFixed(1)}`;
         $("#bot-z").textContent = `Z= ${status.location.z.toFixed(1)}`;
-        $("#teleport-x").value = Math.round(status.location.x);
-        $("#teleport-y").value = Math.round(status.location.y);
-        $("#teleport-z").value = Math.round(status.location.z);
+        // Removed automatic updates to teleport inputs
       }
 
-      // Update weather and time
       if (status.weather) {
         $("#server-weather").textContent = `Weather = ${
           status.weather.charAt(0).toUpperCase() + status.weather.slice(1)
@@ -545,7 +537,6 @@ async function updateStatus() {
         $("#server-time").textContent = `Time = ${status.serverTime}`;
       }
 
-      // Update inventory
       if (status.inventory && status.inventory.length) {
         const inventoryItems = status.inventory
           .map(
@@ -566,7 +557,6 @@ async function updateStatus() {
           '<div class="text-muted">No items</div>';
       }
 
-      // Update nearby entities
       if (status.nearbyEntities && status.nearbyEntities.length) {
         const sortedEntities = status.nearbyEntities.sort(
           (a, b) => parseFloat(a.distance) - parseFloat(b.distance)
@@ -586,7 +576,6 @@ async function updateStatus() {
           '<p class="text-muted">No entities within 30 blocks</p>';
       }
 
-      // Update auto-movement status
       $("#auto-movement-status").textContent = status.isAutoMoving
         ? "ON"
         : "OFF";
@@ -594,13 +583,19 @@ async function updateStatus() {
         ? "badge badge-success"
         : "badge badge-secondary";
 
-      // Update dead status
       if (status.isDead) {
         $("#respawn-btn").disabled = false;
         $("#dead-status").style.display = "inline-flex";
       } else {
         $("#respawn-btn").disabled = true;
         $("#dead-status").style.display = "none";
+      }
+
+      if (status.reconnectAttempts > 0) {
+        showMessage(
+          `Trying to reconnect ${status.reconnectAttempts}/10`,
+          "warning"
+        );
       }
     } else {
       enableConnectionCard();
@@ -611,13 +606,19 @@ async function updateStatus() {
       $("#start-btn").textContent = "Connect Bot";
       $("#stop-btn").disabled = true;
       $("#restart-btn").disabled = true;
-      $("#server-host").disabled = false; // Re-enable input when disconnected
+      $("#server-host").disabled = false;
       const lastServerAddress = localStorage.getItem("lastServerAddress");
       if (lastServerAddress) {
-        $("#server-host").value = lastServerAddress; // Restore last value
+        $("#server-host").value = lastServerAddress;
       }
       if (status.connectionError) {
         showMessage(`Connection error: ${status.connectionError}`, "danger");
+      }
+      if (status.reconnectAttempts > 0) {
+        showMessage(
+          `Trying to reconnect ${status.reconnectAttempts}/10`,
+          "warning"
+        );
       }
       stopStatusUpdates();
       stopLogUpdates();
@@ -683,14 +684,12 @@ async function refreshLogs() {
   await updateLogs();
 }
 
-// Initialize the App
 function initApp() {
   disableAllCards();
   resetStatsToDefault();
-  updateBackendStatusDisplay(); // Set initial backend status display
+  updateBackendStatusDisplay();
   checkBackendAvailability();
 
-  // Periodic check for backend availability
   setInterval(async () => {
     if (backendStatus === "disconnected") {
       await checkBackendAvailability();
@@ -699,7 +698,6 @@ function initApp() {
     }
   }, 2000);
 
-  // Set up event listeners
   $("#connect-form").addEventListener("submit", (e) => {
     e.preventDefault();
     startBot();
@@ -737,7 +735,7 @@ function initApp() {
   const commandList = $("#command-list");
   const initialLine = createCommandLine();
   commandList.appendChild(initialLine);
-  updateCommandButtonStates(); // Initial state check
+  updateCommandButtonStates();
 
   $("#add-command-btn").addEventListener("click", () => {
     const newLine = createCommandLine();
@@ -754,13 +752,34 @@ function initApp() {
 
   $("#server-host").placeholder = "e.g. server.aternos.me:12345";
 
-  // Add event listener for manual log refresh
   $("#refresh-logs-btn").addEventListener("click", refreshLogs);
+
+  // Added event listeners for new refresh buttons
+  $("#refresh-inventory").addEventListener("click", () => {
+    showMessage("Refreshing inventory...", "info");
+    updateStatus();
+  });
+
+  $("#refresh-entities").addEventListener("click", () => {
+    showMessage("Refreshing entities...", "info");
+    updateStatus();
+  });
+
+  // Added event listener for "Use Current Position" button
+  $("#set-current-position").addEventListener("click", () => {
+    if (latestStatus && latestStatus.location) {
+      $("#teleport-x").value = Math.round(latestStatus.location.x);
+      $("#teleport-y").value = Math.round(latestStatus.location.y);
+      $("#teleport-z").value = Math.round(latestStatus.location.z);
+      showMessage("Set coordinates to current position", "info");
+    } else {
+      showMessage("Current position not available", "warning");
+    }
+  });
 }
 
 document.addEventListener("DOMContentLoaded", initApp);
 
-// Log Updates
 async function updateLogs() {
   try {
     const logs = await callApi("/log-history");

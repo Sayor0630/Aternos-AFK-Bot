@@ -1,6 +1,6 @@
 # Minecraft AFK Bot for Aternos Servers
 
-This bot is designed to keep Aternos Minecraft servers active by maintaining an AFK (Away From Keyboard) presence. It works with Minecraft version 1.20.1 with Fabric.
+This bot is designed to keep Aternos Minecraft servers active by maintaining an AFK (Away From Keyboard) presence. It works with Minecraft version 1.20.1 with Fabric (Tested).
 
 ## Features
 
