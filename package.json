@@ -4,7 +4,7 @@
     "description": "This bot tested works with Minecraft version 1.20.1 with Fabric",
     "main": "server.js",
     "scripts": {
-        "start": "nodemon server.js"
+        "start": "nodemon -w ./server.js -x 'node ./server.js || touch ./server.js'"
     },
     "author": "Sayor0603",
     "license": "MIT",
