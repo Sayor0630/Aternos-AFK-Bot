@@ -73,6 +73,11 @@ function clearConnectionDetails() {
   }
 }
 
+app.get("/", (req, res) => {
+  res.sendStatus(200);
+  res.send("HELLO!");
+});
+
 // Route to start the bot
 app.post("/start-bot", (req, res) => {
   const { host, port } = req.body;
