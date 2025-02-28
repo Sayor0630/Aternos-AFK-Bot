@@ -1,4 +1,3 @@
-// bot.js
 const mineflayer = require("mineflayer");
 require("dotenv").config();
 const cmd = require("mineflayer-cmd").plugin;
@@ -19,6 +18,11 @@ let isAutoMoving = false;
 let movementInterval;
 let isDead = false;
 let lastFoodLevel = 20;
+let keepWeatherEnabled = false;
+let targetWeather = null;
+let keepTimeEnabled = false;
+let targetTime = null;
+let maintenanceInterval;
 
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -51,6 +55,23 @@ function fixVehiclePassengersIssue() {
         }
       };
     }
+  }
+}
+
+function isTimeWithinRange(target) {
+  if (!bot || !bot.time) return false;
+  const currentTime = bot.time.timeOfDay;
+  switch (target) {
+    case "day":
+      return currentTime >= 0 && currentTime < 12000; // 6:00 AM - 6:00 PM
+    case "night":
+      return currentTime >= 12000 && currentTime < 24000; // 6:00 PM - 6:00 AM
+    case "noon":
+      return currentTime >= 5500 && currentTime <= 6500; // Around 12:00 PM
+    case "midnight":
+      return currentTime >= 17500 && currentTime <= 18500; // Around 12:00 AM
+    default:
+      return false;
   }
 }
 
@@ -96,6 +117,26 @@ function startBot(host, port, onLoginCallback) {
     console.log("Bot logged in");
     if (onLoginCallback) onLoginCallback();
     startAutoMovement();
+
+    maintenanceInterval = setInterval(() => {
+      if (keepWeatherEnabled && targetWeather) {
+        const currentWeather = bot.isRaining
+          ? bot.thunderState > 0
+            ? "thunder"
+            : "rain"
+          : "clear";
+        if (currentWeather !== targetWeather) {
+          bot.chat(`/weather ${targetWeather}`);
+          console.log(`Maintaining weather: ${targetWeather}`);
+        }
+      }
+      if (keepTimeEnabled && targetTime) {
+        if (!isTimeWithinRange(targetTime)) {
+          bot.chat(`/time set ${targetTime}`);
+          console.log(`Resetting time to ${targetTime}`);
+        }
+      }
+    }, 5000);
   });
 
   bot.on("end", (reason) => {
@@ -103,6 +144,7 @@ function startBot(host, port, onLoginCallback) {
     connectionStatus = "disconnected";
     console.log("Bot disconnected from server. Reason:", reason);
     stopAutoMovement();
+    clearInterval(maintenanceInterval);
     if (!bot._intentionalDisconnect) attemptReconnect();
   });
 
@@ -112,6 +154,7 @@ function startBot(host, port, onLoginCallback) {
     connectionError = err.message;
     console.error("Bot error:", err);
     stopAutoMovement();
+    clearInterval(maintenanceInterval);
     attemptReconnect();
   });
 
@@ -167,6 +210,7 @@ function startBot(host, port, onLoginCallback) {
 function stopBot() {
   if (bot && isConnected) {
     stopAutoMovement();
+    clearInterval(maintenanceInterval);
     bot._intentionalDisconnect = true;
     bot.quit();
     isConnected = false;
@@ -320,7 +364,10 @@ function starveBot() {
       };
     } catch (err) {
       console.error("Error executing hunger command:", err);
-      return { success: false, message: "Failed to execute hunger command" };
+      return {
+        success: false,
+        message: "Failed to execute hunger command",
+      };
     }
   } else {
     return { success: false, message: "Bot is not connected" };
@@ -346,6 +393,38 @@ function setTime(timeValue) {
   } else {
     return { success: false, message: "Bot is not connected" };
   }
+}
+
+function setKeepWeather(enabled, weatherType) {
+  if (enabled && !["clear", "rain", "thunder"].includes(weatherType)) {
+    return { success: false, message: "Invalid weather type" };
+  }
+  keepWeatherEnabled = enabled;
+  targetWeather = enabled ? weatherType : null;
+  if (enabled && bot && isConnected) {
+    bot.chat(`/weather ${weatherType}`);
+  }
+  console.log(`Keep Weather set to ${enabled} with ${weatherType}`);
+  return {
+    success: true,
+    message: `Keep Weather ${enabled ? "enabled" : "disabled"}`,
+  };
+}
+
+function setKeepTime(enabled, timeValue) {
+  if (enabled && !["day", "night", "noon", "midnight"].includes(timeValue)) {
+    return { success: false, message: "Invalid time value" };
+  }
+  keepTimeEnabled = enabled;
+  targetTime = enabled ? timeValue : null;
+  if (enabled && bot && isConnected) {
+    bot.chat(`/time set ${timeValue}`);
+  }
+  console.log(`Keep Time set to ${enabled} with ${timeValue}`);
+  return {
+    success: true,
+    message: `Keep Time ${enabled ? "enabled" : "disabled"}`,
+  };
 }
 
 async function attemptReconnect() {
@@ -435,6 +514,14 @@ function getBotStatus() {
     updateServerTime();
     updateInventory();
     updateNearbyEntities();
+    const allPlayers = Object.values(bot.players).map((player) => ({
+      playerUsername: player.username,
+      uuid: player.uuid,
+      ping: player.ping,
+    }));
+    const players = allPlayers.filter(
+      (player) => player.playerUsername !== bot.username
+    );
     return {
       online: true,
       connectionStatus,
@@ -448,8 +535,14 @@ function getBotStatus() {
       experience: bot.experience,
       inventory: botInventory.slice(0, 9),
       nearbyEntities,
+      players,
+      allPlayers,
       isAutoMoving,
       isDead,
+      keepWeatherEnabled,
+      targetWeather,
+      keepTimeEnabled,
+      targetTime,
     };
   }
   return { online: false, connectionStatus, connectionError };
@@ -616,6 +709,81 @@ function getConnectionStatus() {
   };
 }
 
+function kickPlayer(playerUsername) {
+  if (bot && isConnected) {
+    bot.chat(`/kick ${playerUsername}`);
+    return { success: true, message: `Kicked ${playerUsername}` };
+  }
+  return { success: false, message: "Bot is not connected" };
+}
+
+function banPlayer(playerUsername) {
+  if (bot && isConnected) {
+    bot.chat(`/ban ${playerUsername}`);
+    return { success: true, message: `Banned ${playerUsername}` };
+  }
+  return { success: false, message: "Bot is not connected" };
+}
+
+function killPlayer(playerUsername) {
+  if (bot && isConnected) {
+    bot.chat(`/kill ${playerUsername}`);
+    return { success: true, message: `Killed ${playerUsername}` };
+  }
+  return { success: false, message: "Bot is not connected" };
+}
+
+function healPlayer(playerUsername) {
+  if (bot && isConnected) {
+    bot.chat(`/effect give ${playerUsername} minecraft:regeneration 10 5`);
+    return { success: true, message: `Healed ${playerUsername}` };
+  }
+  return { success: false, message: "Bot is not connected" };
+}
+
+function starvePlayer(playerUsername) {
+  if (bot && isConnected) {
+    bot.chat(`/effect clear ${playerUsername}`);
+    bot.chat(`/effect give ${playerUsername} minecraft:hunger 30 255`);
+    return {
+      success: true,
+      message: `Applied hunger effect and cleared positive effects to ${playerUsername}`,
+    };
+  }
+  return { success: false, message: "Bot is not connected" };
+}
+
+function feedPlayer(playerUsername) {
+  if (bot && isConnected) {
+    bot.chat(`/effect clear ${playerUsername}`);
+    bot.chat(`/effect give ${playerUsername} minecraft:saturation 30 50`);
+    return {
+      success: true,
+      message: `Applied saturation effect and cleared negative effects to ${playerUsername}`,
+    };
+  }
+  return { success: false, message: "Bot is not connected" };
+}
+
+function tpBotToPlayer(playerUsername) {
+  if (bot && isConnected) {
+    bot.chat(`/tp @s ${playerUsername}`);
+    return { success: true, message: `Teleported bot to ${playerUsername}` };
+  }
+  return { success: false, message: "Bot is not connected" };
+}
+
+function tpPlayerToPlayer(fromPlayerUsername, toPlayerUsername) {
+  if (bot && isConnected) {
+    bot.chat(`/tp ${fromPlayerUsername} ${toPlayerUsername}`);
+    return {
+      success: true,
+      message: `Teleported ${fromPlayerUsername} to ${toPlayerUsername}`,
+    };
+  }
+  return { success: false, message: "Bot is not connected" };
+}
+
 module.exports = {
   startBot,
   stopBot,
@@ -639,4 +807,14 @@ module.exports = {
   collectItems,
   toggleAutoMovement,
   isConnected,
+  setKeepWeather,
+  setKeepTime,
+  kickPlayer,
+  banPlayer,
+  killPlayer,
+  healPlayer,
+  starvePlayer,
+  feedPlayer,
+  tpBotToPlayer,
+  tpPlayerToPlayer,
 };

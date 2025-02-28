@@ -2,7 +2,7 @@ const API_URL = "https://aternos-afk-bot-79in.onrender.com";
 let statusUpdateInterval = null;
 let logUpdateInterval = null;
 let backendStatus = "disconnected";
-let latestStatus = null; // Added to store the latest bot status
+let latestStatus = null;
 
 function $(selector) {
   return document.querySelector(selector);
@@ -146,7 +146,7 @@ async function startBot() {
     $("#start-btn").disabled = false;
     $("#start-btn").textContent = "Connect Bot";
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function stopBot() {
@@ -168,7 +168,7 @@ async function stopBot() {
   } else {
     showMessage(`Failed to stop bot: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function restartBot() {
@@ -178,7 +178,7 @@ async function restartBot() {
   } else {
     showMessage(`Failed to restart bot: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function killBot() {
@@ -188,7 +188,7 @@ async function killBot() {
   } else {
     showMessage(`Failed to kill bot: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function healBot() {
@@ -198,7 +198,7 @@ async function healBot() {
   } else {
     showMessage(`Failed to heal bot: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function respawnBot() {
@@ -208,7 +208,7 @@ async function respawnBot() {
   } else {
     showMessage(`Failed to respawn bot: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function feedBot() {
@@ -218,7 +218,7 @@ async function feedBot() {
   } else {
     showMessage(`Failed to feed bot: ${result.message}`, "warning");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function feedBotFood() {
@@ -228,7 +228,7 @@ async function feedBotFood() {
   } else {
     showMessage(`Failed to feed bot: ${result.message}`, "warning");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function starveBot() {
@@ -238,7 +238,7 @@ async function starveBot() {
   } else {
     showMessage(`Failed to starve bot: ${result.message}`, "warning");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function setWeather(weatherType) {
@@ -248,7 +248,7 @@ async function setWeather(weatherType) {
   } else {
     showMessage(`Failed to set weather: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function setTime(timeValue) {
@@ -258,7 +258,7 @@ async function setTime(timeValue) {
   } else {
     showMessage(`Failed to set time: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function teleportBot() {
@@ -275,7 +275,7 @@ async function teleportBot() {
   } else {
     showMessage(`Failed to teleport: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function sendChat() {
@@ -294,7 +294,7 @@ async function sendChat() {
   } else {
     showMessage(`Failed to send message: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 function updateCommandButtonStates() {
@@ -429,7 +429,7 @@ async function executeCommands() {
     executeBtn.disabled = false;
     executeBtn.textContent = "Execute";
     updateCommandButtonStates();
-    setTimeout(updateStatus, 500); // Immediate refresh after all commands
+    setTimeout(updateStatus, 500);
   }
 }
 
@@ -452,7 +452,47 @@ async function toggleAutoMovement() {
   } else {
     showMessage(`Failed to toggle auto movement: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
+}
+
+async function toggleKeepWeather() {
+  const currentStatus = $("#keep-weather-status").textContent === "ON";
+  const newStatus = !currentStatus;
+  const weatherType = $("#weather-selected").textContent.toLowerCase();
+  const result = await callApi("/set-keep-weather", "POST", {
+    enabled: newStatus,
+    weatherType,
+  });
+  if (result.success) {
+    $("#keep-weather-status").textContent = newStatus ? "ON" : "OFF";
+    $("#keep-weather-status").className = newStatus
+      ? "badge badge-success"
+      : "badge badge-secondary";
+    $("#weather-dropdown").disabled = newStatus;
+    showMessage(`Keep Weather ${newStatus ? "enabled" : "disabled"}`, "info");
+  } else {
+    showMessage(`Failed to toggle keep weather: ${result.message}`, "danger");
+  }
+}
+
+async function toggleKeepTime() {
+  const currentStatus = $("#keep-time-status").textContent === "ON";
+  const newStatus = !currentStatus;
+  const timeValue = $("#time-selected").textContent.toLowerCase();
+  const result = await callApi("/set-keep-time", "POST", {
+    enabled: newStatus,
+    timeValue,
+  });
+  if (result.success) {
+    $("#keep-time-status").textContent = newStatus ? "ON" : "OFF";
+    $("#keep-time-status").className = newStatus
+      ? "badge badge-success"
+      : "badge badge-secondary";
+    $("#time-dropdown").disabled = newStatus;
+    showMessage(`Keep Time ${newStatus ? "enabled" : "disabled"}`, "info");
+  } else {
+    showMessage(`Failed to toggle keep time: ${result.message}`, "danger");
+  }
 }
 
 async function collectItems() {
@@ -462,7 +502,7 @@ async function collectItems() {
   } else {
     showMessage(`Failed to collect items: ${result.message}`, "warning");
   }
-  setTimeout(updateStatus, 500); // Immediate refresh after action
+  setTimeout(updateStatus, 500);
 }
 
 async function refreshBotStats() {
@@ -474,7 +514,7 @@ async function updateStatus() {
   if (backendStatus !== "connected") return;
   try {
     const status = await callApi("/bot-status");
-    latestStatus = status; // Store the latest status
+    latestStatus = status;
 
     if (status.online) {
       enableAllCards();
@@ -525,7 +565,6 @@ async function updateStatus() {
         $("#bot-x").textContent = `X= ${status.location.x.toFixed(1)}`;
         $("#bot-y").textContent = `Y= ${status.location.y.toFixed(1)}`;
         $("#bot-z").textContent = `Z= ${status.location.z.toFixed(1)}`;
-        // Removed automatic updates to teleport inputs
       }
 
       if (status.weather) {
@@ -583,6 +622,22 @@ async function updateStatus() {
         ? "badge badge-success"
         : "badge badge-secondary";
 
+      $("#keep-weather-status").textContent = status.keepWeatherEnabled
+        ? "ON"
+        : "OFF";
+      $("#keep-weather-status").className = status.keepWeatherEnabled
+        ? "badge badge-success"
+        : "badge badge-secondary";
+      $("#weather-dropdown").disabled = status.keepWeatherEnabled;
+
+      $("#keep-time-status").textContent = status.keepTimeEnabled
+        ? "ON"
+        : "OFF";
+      $("#keep-time-status").className = status.keepTimeEnabled
+        ? "badge badge-success"
+        : "badge badge-secondary";
+      $("#time-dropdown").disabled = status.keepTimeEnabled;
+
       if (status.isDead) {
         $("#respawn-btn").disabled = false;
         $("#dead-status").style.display = "inline-flex";
@@ -597,6 +652,8 @@ async function updateStatus() {
           "warning"
         );
       }
+
+      renderPlayers(status.players, status.allPlayers);
     } else {
       enableConnectionCard();
       $("#connection-status").textContent =
@@ -622,6 +679,9 @@ async function updateStatus() {
       }
       stopStatusUpdates();
       stopLogUpdates();
+      const playerList = $("#player-list");
+      if (playerList)
+        playerList.innerHTML = '<p class="text-muted">No players online</p>';
     }
   } catch (error) {
     console.error("Status update error:", error);
@@ -677,12 +737,223 @@ function resetStatsToDefault() {
     '<li class="list-group-item">No data available</li>';
   $("#auto-movement-status").textContent = "N/A";
   $("#auto-movement-status").className = "badge badge-secondary";
+  $("#keep-weather-status").textContent = "N/A";
+  $("#keep-weather-status").className = "badge badge-secondary";
+  $("#weather-dropdown").disabled = true;
+  $("#keep-time-status").textContent = "N/A";
+  $("#keep-time-status").className = "badge badge-secondary";
+  $("#time-dropdown").disabled = true;
+  const playerList = $("#player-list");
+  if (playerList)
+    playerList.innerHTML = '<p class="text-muted">No players online</p>';
 }
 
 async function refreshLogs() {
   showMessage("Refreshing logs...", "info");
   await updateLogs();
 }
+
+function renderPlayers(players, allPlayers) {
+  const playerList = $("#player-list");
+  if (!players || players.length === 0) {
+    playerList.innerHTML = '<p class="text-muted">No players online</p>';
+    return;
+  }
+
+  const tableHTML = `
+    <table class="table table-dark table-striped">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Ping</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${players
+          .map(
+            (player) => `
+              <tr>
+                <td>${player.playerUsername}</td>
+                <td>${player.ping} ms</td>
+                <td>
+                  <div class="btn-group" role="group">
+                    <button class="btn btn-danger" onclick="kickPlayer('${
+                      player.playerUsername
+                    }')" title="Kick Player">
+                      <i class="fas fa-times"></i> Kick
+                    </button>
+                    <button class="btn btn-danger" onclick="banPlayer('${
+                      player.playerUsername
+                    }')" title="Ban Player">
+                      <i class="fas fa-ban"></i> Ban
+                    </button>
+                    <button class="btn btn-warning" onclick="killPlayer('${
+                      player.playerUsername
+                    }')" title="Kill Player">
+                      <i class="fas fa-skull"></i> Kill
+                    </button>
+                    <button class="btn btn-success" onclick="healPlayer('${
+                      player.playerUsername
+                    }')" title="Heal Player">
+                      <i class="fas fa-heart"></i> Heal
+                    </button>
+                    <button class="btn btn-warning" onclick="starvePlayer('${
+                      player.playerUsername
+                    }')" title="Starve Player">
+                      <i class="fas fa-dizzy"></i> Starve
+                    </button>
+                    <button class="btn btn-success" onclick="feedPlayer('${
+                      player.playerUsername
+                    }')" title="Feed Player">
+                      <i class="fas fa-drumstick-bite"></i> Feed
+                    </button>
+                    <button class="btn btn-info" onclick="tpBotToPlayer('${
+                      player.playerUsername
+                    }')" title="Teleport Bot to Player">
+                      <i class="fas fa-map-marker-alt"></i> TP Bot
+                    </button>
+                    <div class="btn-group">
+                      <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" title="Teleport Player to Another Player" aria-expanded="false">
+                        <i class="fas fa-exchange-alt"></i> TP To...
+                      </button>
+                      <ul class="dropdown-menu">
+                        ${allPlayers
+                          .filter(
+                            (p) => p.playerUsername !== player.playerUsername
+                          )
+                          .map(
+                            (p) =>
+                              `<li><a class="dropdown-item" href="#" onclick="tpPlayerToPlayer('${player.playerUsername}', '${p.playerUsername}')">${p.playerUsername}</a></li>`
+                          )
+                          .join("")}
+                      </ul>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            `
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+  playerList.innerHTML = tableHTML;
+}
+
+window.kickPlayer = async function (playerUsername) {
+  if (confirm(`Are you sure you want to kick ${playerUsername}?`)) {
+    const result = await callApi("/kick-player", "POST", { playerUsername });
+    if (result.success) {
+      showMessage(result.message, "success");
+    } else {
+      showMessage(
+        `Failed to kick ${playerUsername}: ${result.message}`,
+        "danger"
+      );
+    }
+  }
+  setTimeout(updateStatus, 500);
+};
+
+window.banPlayer = async function (playerUsername) {
+  if (confirm(`Are you sure you want to ban ${playerUsername}?`)) {
+    const result = await callApi("/ban-player", "POST", { playerUsername });
+    if (result.success) {
+      showMessage(result.message, "success");
+    } else {
+      showMessage(
+        `Failed to ban ${playerUsername}: ${result.message}`,
+        "danger"
+      );
+    }
+  }
+  setTimeout(updateStatus, 500);
+};
+
+window.killPlayer = async function (playerUsername) {
+  const result = await callApi("/kill-player", "POST", { playerUsername });
+  if (result.success) {
+    showMessage(result.message, "success");
+  } else {
+    showMessage(
+      `Failed to kill ${playerUsername}: ${result.message}`,
+      "danger"
+    );
+  }
+  setTimeout(updateStatus, 500);
+};
+
+window.healPlayer = async function (playerUsername) {
+  const result = await callApi("/heal-player", "POST", { playerUsername });
+  if (result.success) {
+    showMessage(result.message, "success");
+  } else {
+    showMessage(
+      `Failed to heal ${playerUsername}: ${result.message}`,
+      "danger"
+    );
+  }
+  setTimeout(updateStatus, 500);
+};
+
+window.starvePlayer = async function (playerUsername) {
+  const result = await callApi("/starve-player", "POST", { playerUsername });
+  if (result.success) {
+    showMessage(result.message, "success");
+  } else {
+    showMessage(
+      `Failed to starve ${playerUsername}: ${result.message}`,
+      "danger"
+    );
+  }
+  setTimeout(updateStatus, 500);
+};
+
+window.feedPlayer = async function (playerUsername) {
+  const result = await callApi("/feed-player", "POST", { playerUsername });
+  if (result.success) {
+    showMessage(result.message, "success");
+  } else {
+    showMessage(
+      `Failed to feed ${playerUsername}: ${result.message}`,
+      "danger"
+    );
+  }
+  setTimeout(updateStatus, 500);
+};
+
+window.tpBotToPlayer = async function (playerUsername) {
+  const result = await callApi("/tp-bot-to-player", "POST", { playerUsername });
+  if (result.success) {
+    showMessage(result.message, "success");
+  } else {
+    showMessage(
+      `Failed to teleport bot to ${playerUsername}: ${result.message}`,
+      "danger"
+    );
+  }
+  setTimeout(updateStatus, 500);
+};
+
+window.tpPlayerToPlayer = async function (
+  fromPlayerUsername,
+  toPlayerUsername
+) {
+  const result = await callApi("/tp-player-to-player", "POST", {
+    fromPlayerUsername,
+    toPlayerUsername,
+  });
+  if (result.success) {
+    showMessage(result.message, "success");
+  } else {
+    showMessage(
+      `Failed to teleport ${fromPlayerUsername} to ${toPlayerUsername}: ${result.message}`,
+      "danger"
+    );
+  }
+  setTimeout(updateStatus, 500);
+};
 
 function initApp() {
   disableAllCards();
@@ -747,6 +1018,8 @@ function initApp() {
   $("#remove-all-commands-btn").addEventListener("click", removeAllCommands);
   $("#execute-commands-btn").addEventListener("click", executeCommands);
   $("#toggle-auto-movement").addEventListener("click", toggleAutoMovement);
+  $("#toggle-keep-weather").addEventListener("click", toggleKeepWeather);
+  $("#toggle-keep-time").addEventListener("click", toggleKeepTime);
   $("#collect-items-btn").addEventListener("click", collectItems);
   $("#collect-items-btn-inv").addEventListener("click", collectItems);
 
@@ -754,7 +1027,6 @@ function initApp() {
 
   $("#refresh-logs-btn").addEventListener("click", refreshLogs);
 
-  // Added event listeners for new refresh buttons
   $("#refresh-inventory").addEventListener("click", () => {
     showMessage("Refreshing inventory...", "info");
     updateStatus();
@@ -765,7 +1037,11 @@ function initApp() {
     updateStatus();
   });
 
-  // Added event listener for "Use Current Position" button
+  $("#refresh-players").addEventListener("click", () => {
+    showMessage("Refreshing players list...", "info");
+    updateStatus();
+  });
+
   $("#set-current-position").addEventListener("click", () => {
     if (latestStatus && latestStatus.location) {
       $("#teleport-x").value = Math.round(latestStatus.location.x);
@@ -776,6 +1052,28 @@ function initApp() {
       showMessage("Current position not available", "warning");
     }
   });
+
+  document
+    .querySelectorAll("#weather-dropdown + .dropdown-menu .dropdown-item")
+    .forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        const selectedWeather = e.target.getAttribute("data-value");
+        $("#weather-selected").textContent =
+          selectedWeather.charAt(0).toUpperCase() + selectedWeather.slice(1);
+      });
+    });
+
+  document
+    .querySelectorAll("#time-dropdown + .dropdown-menu .dropdown-item")
+    .forEach((item) => {
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        const selectedTime = e.target.getAttribute("data-value");
+        $("#time-selected").textContent =
+          selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1);
+      });
+    });
 }
 
 document.addEventListener("DOMContentLoaded", initApp);

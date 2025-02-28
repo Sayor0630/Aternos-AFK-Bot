@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
@@ -31,7 +30,6 @@ app.get("/", (req, res) => {
 app.post("/start-bot", async (req, res) => {
   const { host, port } = req.body;
   const result = bot.startBot(host, port, async () => {
-    // Callback on successful login
     await db.saveConnectionDetails(host, port, false);
   });
   addToLog("system", `Attempted to start bot: ${result.message}`);
@@ -110,6 +108,26 @@ app.post("/set-time", (req, res) => {
   res.json(result);
 });
 
+app.post("/set-keep-weather", (req, res) => {
+  const { enabled, weatherType } = req.body;
+  const result = bot.setKeepWeather(enabled, weatherType);
+  addToLog(
+    "system",
+    `Set keep weather to ${enabled} with ${weatherType}: ${result.message}`
+  );
+  res.json(result);
+});
+
+app.post("/set-keep-time", (req, res) => {
+  const { enabled, timeValue } = req.body;
+  const result = bot.setKeepTime(enabled, timeValue);
+  addToLog(
+    "system",
+    `Set keep time to ${enabled} with ${timeValue}: ${result.message}`
+  );
+  res.json(result);
+});
+
 app.get("/bot-status", (req, res) => {
   const status = bot.getBotStatus();
   const reconnectAttempts = bot.getReconnectAttempts();
@@ -171,6 +189,68 @@ app.post("/toggle-auto-movement", (req, res) => {
 
 app.get("/log-history", (req, res) => {
   res.json(logHistory);
+});
+
+app.post("/kick-player", (req, res) => {
+  const { playerUsername } = req.body;
+  const result = bot.kickPlayer(playerUsername);
+  addToLog("action", `Kicked player ${playerUsername}: ${result.message}`);
+  res.json(result);
+});
+
+app.post("/ban-player", (req, res) => {
+  const { playerUsername } = req.body;
+  const result = bot.banPlayer(playerUsername);
+  addToLog("action", `Banned player ${playerUsername}: ${result.message}`);
+  res.json(result);
+});
+
+app.post("/kill-player", (req, res) => {
+  const { playerUsername } = req.body;
+  const result = bot.killPlayer(playerUsername);
+  addToLog("action", `Killed player ${playerUsername}: ${result.message}`);
+  res.json(result);
+});
+
+app.post("/heal-player", (req, res) => {
+  const { playerUsername } = req.body;
+  const result = bot.healPlayer(playerUsername);
+  addToLog("action", `Healed player ${playerUsername}: ${result.message}`);
+  res.json(result);
+});
+
+app.post("/starve-player", (req, res) => {
+  const { playerUsername } = req.body;
+  const result = bot.starvePlayer(playerUsername);
+  addToLog("action", `Starved player ${playerUsername}: ${result.message}`);
+  res.json(result);
+});
+
+app.post("/feed-player", (req, res) => {
+  const { playerUsername } = req.body;
+  const result = bot.feedPlayer(playerUsername);
+  addToLog("action", `Fed player ${playerUsername}: ${result.message}`);
+  res.json(result);
+});
+
+app.post("/tp-bot-to-player", (req, res) => {
+  const { playerUsername } = req.body;
+  const result = bot.tpBotToPlayer(playerUsername);
+  addToLog(
+    "movement",
+    `Teleported bot to ${playerUsername}: ${result.message}`
+  );
+  res.json(result);
+});
+
+app.post("/tp-player-to-player", (req, res) => {
+  const { fromPlayerUsername, toPlayerUsername } = req.body;
+  const result = bot.tpPlayerToPlayer(fromPlayerUsername, toPlayerUsername);
+  addToLog(
+    "movement",
+    `Teleported ${fromPlayerUsername} to ${toPlayerUsername}: ${result.message}`
+  );
+  res.json(result);
 });
 
 async function startBotWithAutoReconnect() {

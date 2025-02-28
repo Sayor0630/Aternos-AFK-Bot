@@ -137,7 +137,7 @@
 
       #alerts {
         position: fixed;
-        bottom: 20px; /* Changed from top: 20px to bottom: 20px */
+        bottom: 20px;
         right: 20px;
         z-index: 9999;
         width: 350px;
@@ -331,7 +331,7 @@
       #entity-list table {
         width: 100%;
         margin-bottom: 1rem;
-        color: #fff; /* White text for dark theme */
+        color: #fff;
       }
 
       #entity-list th,
@@ -346,27 +346,112 @@
         border-bottom: 2px solid #444;
       }
 
-      /* Color-coding for entity types */
       .entity-hostile {
-        color: #ff4d4d; /* Red for hostile */
+        color: #ff4d4d;
       }
       .entity-animal {
-        color: #4dff4d; /* Green for animals */
+        color: #4dff4d;
       }
       .entity-player {
-        color: #4d94ff; /* Blue for players */
+        color: #4d94ff;
       }
       .entity-water_creature {
-        color: #00ffff; /* Aqua for water creatures */
+        color: #00ffff;
       }
       .entity-ambient {
-        color: #cccccc; /* Gray for ambient */
+        color: #cccccc;
       }
 
-      /* Make the list scrollable if needed */
       #entity-list {
         max-height: 300px;
         overflow-y: auto;
+        border: 1px solid #444; /* Same border */
+        border-radius: 5px; /* Same rounded corners */
+      }
+
+      #player-list {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #444; /* Same border */
+        border-radius: 5px; /* Same rounded corners */
+      }
+
+      #player-list table {
+        width: 100%;
+        margin-bottom: 1rem;
+        color: #fff;
+      }
+
+      #player-list th,
+      #player-list td {
+        padding: 0.75rem;
+        vertical-align: middle;
+        border-top: 1px solid #444;
+      }
+
+      #player-list th:first-child,
+      #player-list td:first-child {
+        width: auto; /* "Name" column */
+      }
+
+      #player-list th:nth-child(2),
+      #player-list td:nth-child(2) {
+        width: auto; /* "Ping" column */
+      }
+
+      #player-list th:last-child,
+      #player-list td:last-child {
+        width: 1%; /* "Actions" column, minimum width */
+        white-space: nowrap; /* Prevents wrapping */
+      }
+
+      #player-list td:last-child .btn-group {
+        display: inline-flex; /* Keeps buttons in a row */
+        float: right; /* Aligns actions to the far right */
+      }
+
+      /* Match striped rows exactly */
+      #player-list .table-striped tbody tr:nth-of-type(odd) {
+        background-color: rgba(255, 255, 255, 0.05); /* Same striped color */
+      }
+
+      /* Match header style exactly to .table-dark */
+      #player-list thead th {
+        background-color: #333;
+        border-bottom: 2px solid #444;
+      }
+      /* Custom Dropdown Styling */
+      .dropdown-menu {
+        background-color: #252525;
+        border: 1px solid #444;
+      }
+
+      .dropdown-item {
+        color: #e0e0e0;
+      }
+
+      .dropdown-item:hover,
+      .dropdown-item:focus {
+        background-color: var(--secondary);
+        color: white;
+      }
+
+      .btn-custom {
+        background-color: #333;
+        color: #e0e0e0;
+        border: 1px solid #444;
+      }
+
+      .btn-custom:hover,
+      .btn-custom:focus {
+        background-color: var(--secondary);
+        color: white;
+        border-color: var(--secondary);
+      }
+
+      .btn-custom.disabled {
+        opacity: 0.6;
+        pointer-events: none;
       }
 
       @media (max-width: 768px) {
@@ -530,6 +615,104 @@
                   </button>
                 </div>
               </div>
+              <div class="mb-3">
+                <label class="form-label">Keep Weather</label>
+                <div class="d-flex align-items-center">
+                  <div class="dropdown me-2">
+                    <button
+                      class="btn btn-custom dropdown-toggle"
+                      type="button"
+                      id="weather-dropdown"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      disabled
+                    >
+                      <span id="weather-selected">Clear</span>
+                    </button>
+                    <ul
+                      class="dropdown-menu"
+                      aria-labelledby="weather-dropdown"
+                    >
+                      <li>
+                        <a class="dropdown-item" href="#" data-value="clear"
+                          >Clear</a
+                        >
+                      </li>
+                      <li>
+                        <a class="dropdown-item" href="#" data-value="rain"
+                          >Rain</a
+                        >
+                      </li>
+                      <li>
+                        <a class="dropdown-item" href="#" data-value="thunder"
+                          >Thunder</a
+                        >
+                      </li>
+                    </ul>
+                  </div>
+                  Status:
+                  <span
+                    id="keep-weather-status"
+                    class="badge badge-secondary ms-2"
+                    >OFF</span
+                  >
+                  <button
+                    id="toggle-keep-weather"
+                    class="btn btn-sm btn-primary ms-2"
+                  >
+                    Toggle
+                  </button>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Keep Time</label>
+                <div class="d-flex align-items-center">
+                  <div class="dropdown me-2">
+                    <button
+                      class="btn btn-custom dropdown-toggle"
+                      type="button"
+                      id="time-dropdown"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      disabled
+                    >
+                      <span id="time-selected">Day</span>
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="time-dropdown">
+                      <li>
+                        <a class="dropdown-item" href="#" data-value="day"
+                          >Day</a
+                        >
+                      </li>
+                      <li>
+                        <a class="dropdown-item" href="#" data-value="night"
+                          >Night</a
+                        >
+                      </li>
+                      <li>
+                        <a class="dropdown-item" href="#" data-value="noon"
+                          >Noon</a
+                        >
+                      </li>
+                      <li>
+                        <a class="dropdown-item" href="#" data-value="midnight"
+                          >Midnight</a
+                        >
+                      </li>
+                    </ul>
+                  </div>
+                  Status:
+                  <span id="keep-time-status" class="badge badge-secondary ms-2"
+                    >OFF</span
+                  >
+                  <button
+                    id="toggle-keep-time"
+                    class="btn btn-sm btn-primary ms-2"
+                  >
+                    Toggle
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -584,6 +767,18 @@
                   role="tab"
                 >
                   <i class="fas fa-spider me-1"></i> Entities
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button
+                  class="nav-link"
+                  id="players-tab"
+                  data-bs-toggle="tab"
+                  data-bs-target="#players"
+                  type="button"
+                  role="tab"
+                >
+                  <i class="fas fa-users me-1"></i> Players
                 </button>
               </li>
               <li class="nav-item" role="presentation">
@@ -791,18 +986,10 @@
                   </div>
                   <h5 class="mt-4 mb-3">Functions</h5>
                   <div class="d-flex gap-2">
-                    <button
-                      id="feed-btn-inv"
-                      class="btn btn-primary"
-                      onclick="feedBotFood()"
-                    >
+                    <button id="feed-btn-inv" class="btn btn-primary">
                       <i class="fas fa-apple-alt"></i> Eat Food
                     </button>
-                    <button
-                      id="collect-items-btn-inv"
-                      class="btn btn-primary"
-                      onclick="collectItems()"
-                    >
+                    <button id="collect-items-btn-inv" class="btn btn-primary">
                       <i class="fas fa-hand-paper"></i> Collect Items
                     </button>
                   </div>
@@ -827,6 +1014,27 @@
                   <ul id="entity-list" class="list-group">
                     <li class="list-group-item">No data available</li>
                   </ul>
+                </div>
+              </div>
+
+              <!-- Players Tab -->
+              <div class="tab-pane fade" id="players" role="tabpanel">
+                <div class="card-body">
+                  <div
+                    class="d-flex justify-content-between align-items-center mb-3"
+                  >
+                    <h5 class="mb-0">Online Players</h5>
+                    <button
+                      id="refresh-players"
+                      class="btn btn-sm btn-outline-light"
+                      title="Refresh Players"
+                    >
+                      <i class="fas fa-sync-alt"></i>
+                    </button>
+                  </div>
+                  <div id="player-list">
+                    <!-- Player list will be dynamically inserted here -->
+                  </div>
                 </div>
               </div>
 
