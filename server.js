@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
@@ -41,10 +42,10 @@ app.post("/stop-bot", async (req, res) => {
   addToLog("system", `Attempted to stop bot: ${result.message}`);
   if (result.success) {
     const connectionDetails = await db.getConnectionDetails();
-    if (connectionDetails) {
+    if (connectionDetails && connectionDetails.connection) {
       await db.saveConnectionDetails(
-        connectionDetails.ip,
-        connectionDetails.port,
+        connectionDetails.connection.ip,
+        connectionDetails.connection.port,
         true
       );
     }
@@ -253,17 +254,44 @@ app.post("/tp-player-to-player", (req, res) => {
   res.json(result);
 });
 
+app.post("/drop-item", async (req, res) => {
+  const { slot, amount } = req.body;
+  const result = await bot.dropItemFromSlot(slot, amount);
+  addToLog("action", result.message);
+  res.json(result);
+});
+
+app.post("/drop-stacks", async (req, res) => {
+  const { slots } = req.body;
+  const result = await bot.dropStacksFromSlots(slots);
+  addToLog("action", result.message);
+  res.json(result);
+});
+
+app.post("/drop-all", async (req, res) => {
+  const result = await bot.dropAllItems();
+  addToLog("action", result.message);
+  res.json(result);
+});
+
 async function startBotWithAutoReconnect() {
   const connectionDetails = await db.getConnectionDetails();
-  if (connectionDetails && !connectionDetails.userDisconnected) {
+  if (
+    connectionDetails &&
+    connectionDetails.connection &&
+    !connectionDetails.connection.userDisconnected
+  ) {
     console.log(
-      `Attempting to auto-reconnect to ${connectionDetails.ip}:${connectionDetails.port}`
+      `Attempting to auto-reconnect to ${connectionDetails.connection.ip}:${connectionDetails.connection.port}`
     );
     addToLog(
       "system",
-      `Auto-reconnecting to ${connectionDetails.ip}:${connectionDetails.port}`
+      `Auto-reconnecting to ${connectionDetails.connection.ip}:${connectionDetails.connection.port}`
     );
-    const result = bot.startBot(connectionDetails.ip, connectionDetails.port);
+    const result = bot.startBot(
+      connectionDetails.connection.ip,
+      connectionDetails.connection.port
+    );
     if (!result.success) {
       console.error(`Auto-reconnect failed: ${result.message}`);
       addToLog("system", `Auto-reconnect failed: ${result.message}`);

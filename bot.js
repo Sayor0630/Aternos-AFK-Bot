@@ -1,3 +1,4 @@
+// bot.js
 const mineflayer = require("mineflayer");
 require("dotenv").config();
 const cmd = require("mineflayer-cmd").plugin;
@@ -15,7 +16,7 @@ let nearbyEntities = [];
 let serverTime = "unknown";
 let weather = "unknown";
 let isAutoMoving = false;
-let movementInterval;
+let movementInterval = null; // Single reference for auto movement interval
 let isDead = false;
 let lastFoodLevel = 20;
 let keepWeatherEnabled = false;
@@ -63,16 +64,50 @@ function isTimeWithinRange(target) {
   const currentTime = bot.time.timeOfDay;
   switch (target) {
     case "day":
-      return currentTime >= 0 && currentTime < 12000; // 6:00 AM - 6:00 PM
+      return currentTime >= 0 && currentTime < 12000;
     case "night":
-      return currentTime >= 12000 && currentTime < 24000; // 6:00 PM - 6:00 AM
+      return currentTime >= 12000 && currentTime < 24000;
     case "noon":
-      return currentTime >= 5500 && currentTime <= 6500; // Around 12:00 PM
+      return currentTime >= 5500 && currentTime <= 6500;
     case "midnight":
-      return currentTime >= 17500 && currentTime <= 18500; // Around 12:00 AM
+      return currentTime >= 17500 && currentTime <= 18500;
     default:
       return false;
   }
+}
+
+async function loadSettings() {
+  const botName = process.env.BOT_USERNAME;
+  const savedSettings = await db.getBotSettings(botName);
+  if (savedSettings && savedSettings.settings) {
+    isAutoMoving = savedSettings.settings.isAutoMoving || false;
+    keepWeatherEnabled = savedSettings.settings.keepWeatherEnabled || false;
+    targetWeather = savedSettings.settings.targetWeather || null;
+    keepTimeEnabled = savedSettings.settings.keepTimeEnabled || false;
+    targetTime = savedSettings.settings.targetTime || null;
+    console.log("Loaded settings from MongoDB:", savedSettings.settings);
+  } else {
+    console.log("No saved settings found, using defaults.");
+  }
+}
+
+async function saveSettings() {
+  const botName = process.env.BOT_USERNAME;
+  const settings = {
+    settings: {
+      isAutoMoving,
+      keepWeatherEnabled,
+      targetWeather,
+      keepTimeEnabled,
+      targetTime,
+    },
+  };
+  const existingSettings = await db.getBotSettings(botName);
+  if (existingSettings && existingSettings.connection) {
+    settings.connection = existingSettings.connection;
+  }
+  await db.saveBotSettings(botName, settings);
+  console.log("Saved settings to MongoDB:", settings.settings);
 }
 
 function startBot(host, port, onLoginCallback) {
@@ -108,18 +143,19 @@ function startBot(host, port, onLoginCallback) {
     console.log("Bot connected to server");
   });
 
-  bot.once("login", () => {
+  bot.once("login", async () => {
     fixVehiclePassengersIssue();
     isConnected = true;
     connectionStatus = "connected";
     isDead = false;
     reconnectAttempts = 0;
     console.log("Bot logged in");
+    await loadSettings();
+    if (isAutoMoving) startAutoMovement();
     if (onLoginCallback) onLoginCallback();
-    startAutoMovement();
 
     maintenanceInterval = setInterval(() => {
-      if (keepWeatherEnabled && targetWeather) {
+      if (keepWeatherEnabled && targetWeather && bot && isConnected) {
         const currentWeather = bot.isRaining
           ? bot.thunderState > 0
             ? "thunder"
@@ -130,7 +166,7 @@ function startBot(host, port, onLoginCallback) {
           console.log(`Maintaining weather: ${targetWeather}`);
         }
       }
-      if (keepTimeEnabled && targetTime) {
+      if (keepTimeEnabled && targetTime && bot && isConnected) {
         if (!isTimeWithinRange(targetTime)) {
           bot.chat(`/time set ${targetTime}`);
           console.log(`Resetting time to ${targetTime}`);
@@ -142,9 +178,9 @@ function startBot(host, port, onLoginCallback) {
   bot.on("end", (reason) => {
     isConnected = false;
     connectionStatus = "disconnected";
-    console.log("Bot disconnected from server. Reason:", reason);
     stopAutoMovement();
     clearInterval(maintenanceInterval);
+    console.log("Bot disconnected from server. Reason:", reason);
     if (!bot._intentionalDisconnect) attemptReconnect();
   });
 
@@ -152,20 +188,25 @@ function startBot(host, port, onLoginCallback) {
     isConnected = false;
     connectionStatus = "error";
     connectionError = err.message;
-    console.error("Bot error:", err);
     stopAutoMovement();
     clearInterval(maintenanceInterval);
+    console.error("Bot error:", err);
     attemptReconnect();
   });
 
   bot.once("spawn", () => {
     console.log("Bot has spawned");
     isDead = false;
+    if (isAutoMoving) startAutoMovement();
+    if (keepWeatherEnabled && targetWeather)
+      bot.chat(`/weather ${targetWeather}`);
+    if (keepTimeEnabled && targetTime) bot.chat(`/time set ${targetTime}`);
   });
 
   bot.on("death", () => {
     console.log("Bot has died");
     isDead = true;
+    stopAutoMovement();
   });
 
   bot.on("spawn", () => {
@@ -173,7 +214,14 @@ function startBot(host, port, onLoginCallback) {
       console.log("Bot has respawned");
       isDead = false;
       bot._client.write("client_command", { payload: 0 });
-      if (isAutoMoving) startAutoMovement();
+      if (isAutoMoving) {
+        startAutoMovement();
+      } else {
+        stopAutoMovement(); // Ensure no movement if toggle is OFF
+      }
+      if (keepWeatherEnabled && targetWeather)
+        bot.chat(`/weather ${targetWeather}`);
+      if (keepTimeEnabled && targetTime) bot.chat(`/time set ${targetTime}`);
     }
   });
 
@@ -405,6 +453,7 @@ function setKeepWeather(enabled, weatherType) {
     bot.chat(`/weather ${weatherType}`);
   }
   console.log(`Keep Weather set to ${enabled} with ${weatherType}`);
+  saveSettings();
   return {
     success: true,
     message: `Keep Weather ${enabled ? "enabled" : "disabled"}`,
@@ -421,6 +470,7 @@ function setKeepTime(enabled, timeValue) {
     bot.chat(`/time set ${timeValue}`);
   }
   console.log(`Keep Time set to ${enabled} with ${timeValue}`);
+  saveSettings();
   return {
     success: true,
     message: `Keep Time ${enabled ? "enabled" : "disabled"}`,
@@ -434,58 +484,80 @@ async function attemptReconnect() {
   }
 
   const connectionDetails = await db.getConnectionDetails();
-  if (connectionDetails && !connectionDetails.userDisconnected) {
+  if (connectionDetails && !connectionDetails.connection.userDisconnected) {
     reconnectAttempts++;
     console.log(
       `Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`
     );
     setTimeout(() => {
       if (!isConnected && connectionStatus !== "connecting") {
-        startBot(connectionDetails.ip, connectionDetails.port);
+        startBot(
+          connectionDetails.connection.ip,
+          connectionDetails.connection.port
+        );
       }
     }, RECONNECT_DELAY * reconnectAttempts);
   }
 }
 
 function startAutoMovement() {
-  if (!isAutoMoving && bot && isConnected) {
-    isAutoMoving = true;
-    movementInterval = setInterval(() => {
-      try {
-        if (bot && bot.entity) {
-          const action = Math.random();
-          if (action < 0.3) {
-            bot.look(
-              Math.random() * Math.PI * 2,
-              Math.random() * Math.PI - Math.PI / 2
-            );
-          } else if (action < 0.7) {
-            const currentPos = bot.entity.position;
-            const dx = Math.floor(Math.random() * 10) - 5;
-            const dz = Math.floor(Math.random() * 10) - 5;
-            const targetX = Math.floor(currentPos.x) + dx;
-            const targetZ = Math.floor(currentPos.z) + dz;
-            bot.pathfinder.setGoal(
-              new GoalBlock(targetX, Math.floor(currentPos.y), targetZ)
-            );
-          } else {
-            collectItems();
-          }
-        }
-      } catch (err) {
-        console.error("Error in automatic movement:", err);
-      }
-    }, Math.random() * 5000 + 10000);
-    console.log("Automatic movement started");
+  if (!bot || !isConnected || !isAutoMoving || movementInterval) {
+    console.log("Auto movement not started:", {
+      isConnected,
+      isAutoMoving,
+      hasInterval: !!movementInterval,
+    });
+    return;
   }
+
+  movementInterval = setInterval(() => {
+    if (!isConnected || isDead || !isAutoMoving) {
+      stopAutoMovement();
+      return;
+    }
+
+    try {
+      const pos = bot.entity.position;
+      const dx = Math.floor(Math.random() * 10) - 5;
+      const dz = Math.floor(Math.random() * 10) - 5;
+      const targetX = Math.floor(pos.x) + dx;
+      const targetZ = Math.floor(pos.z) + dz;
+      bot.pathfinder.setGoal(
+        new GoalBlock(targetX, Math.floor(pos.y), targetZ)
+      );
+      console.log(`Auto moving to X: ${targetX}, Z: ${targetZ}`);
+    } catch (err) {
+      console.error("Error in auto movement:", err.message);
+    }
+  }, 3000); // Consistent 3-second interval for controlled movement
+
+  console.log("Auto movement started");
 }
 
 function stopAutoMovement() {
-  if (isAutoMoving) {
+  if (movementInterval) {
     clearInterval(movementInterval);
-    isAutoMoving = false;
-    console.log("Automatic movement stopped");
+    movementInterval = null;
+    console.log("Auto movement stopped");
   }
+}
+
+function toggleAutoMovement() {
+  if (!bot || !isConnected) {
+    return { success: false, message: "Bot is not connected" };
+  }
+
+  isAutoMoving = !isAutoMoving;
+  if (isAutoMoving) {
+    startAutoMovement();
+  } else {
+    stopAutoMovement();
+  }
+  saveSettings();
+  return {
+    success: true,
+    message: `Auto movement ${isAutoMoving ? "enabled" : "disabled"}`,
+  };
 }
 
 function sendChatMessage(message) {
@@ -533,7 +605,7 @@ function getBotStatus() {
       weather,
       serverTime,
       experience: bot.experience,
-      inventory: botInventory.slice(0, 9),
+      inventory: botInventory,
       nearbyEntities,
       players,
       allPlayers,
@@ -597,12 +669,17 @@ function updateInventory() {
   if (bot && isConnected && bot.inventory) {
     try {
       botInventory = bot.inventory.slots
-        .filter((item) => item !== null)
-        .map((item) => ({
-          name: item.name,
-          count: item.count,
-          displayName: item.displayName,
-        }));
+        .map((item, index) =>
+          item
+            ? {
+                slot: index,
+                name: item.name,
+                count: item.count,
+                displayName: item.displayName,
+              }
+            : null
+        )
+        .filter((item) => item !== null);
     } catch (e) {
       botInventory = [];
     }
@@ -681,19 +758,6 @@ function collectItems() {
         success: true,
         message: `Moving to collect ${items.length} items`,
       };
-    }
-  }
-  return { success: false, message: "Bot is not connected" };
-}
-
-function toggleAutoMovement() {
-  if (bot && isConnected) {
-    if (isAutoMoving) {
-      stopAutoMovement();
-      return { success: true, message: "Automatic movement stopped" };
-    } else {
-      startAutoMovement();
-      return { success: true, message: "Automatic movement started" };
     }
   }
   return { success: false, message: "Bot is not connected" };
@@ -784,6 +848,67 @@ function tpPlayerToPlayer(fromPlayerUsername, toPlayerUsername) {
   return { success: false, message: "Bot is not connected" };
 }
 
+async function dropItemFromSlot(slot, amount) {
+  if (!bot || !isConnected) {
+    return { success: false, message: "Bot is not connected" };
+  }
+  try {
+    const item = bot.inventory.slots[slot];
+    if (!item || item.count < amount) {
+      return { success: false, message: "Invalid slot or insufficient items" };
+    }
+    await bot.toss(item.type, null, amount);
+    return {
+      success: true,
+      message: `Dropped ${amount} items from slot ${slot}`,
+    };
+  } catch (err) {
+    console.error("Error dropping items:", err);
+    return { success: false, message: "Failed to drop items" };
+  }
+}
+
+async function dropStacksFromSlots(slots) {
+  if (!bot || !isConnected) {
+    return { success: false, message: "Bot is not connected" };
+  }
+  try {
+    const results = [];
+    for (const slot of slots) {
+      const item = bot.inventory.slots[slot];
+      if (item) {
+        await bot.tossStack(item);
+        results.push(`Dropped entire stack from slot ${slot}`);
+      } else {
+        results.push(`No item in slot ${slot}`);
+      }
+    }
+    return { success: true, message: results.join(", ") };
+  } catch (err) {
+    console.error("Error dropping stacks:", err);
+    return { success: false, message: "Failed to drop stacks" };
+  }
+}
+
+async function dropAllItems() {
+  if (!bot || !isConnected) {
+    return { success: false, message: "Bot is not connected" };
+  }
+  try {
+    const items = bot.inventory.items();
+    if (items.length === 0) {
+      return { success: true, message: "Inventory is already empty" };
+    }
+    for (const item of items) {
+      await bot.tossStack(item);
+    }
+    return { success: true, message: "Dropped all items from inventory" };
+  } catch (err) {
+    console.error("Error dropping all items:", err);
+    return { success: false, message: "Failed to drop all items" };
+  }
+}
+
 module.exports = {
   startBot,
   stopBot,
@@ -817,4 +942,7 @@ module.exports = {
   feedPlayer,
   tpBotToPlayer,
   tpPlayerToPlayer,
+  dropItemFromSlot,
+  dropStacksFromSlots,
+  dropAllItems,
 };

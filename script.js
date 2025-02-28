@@ -1,8 +1,13 @@
+// script.js
 const API_URL = "https://aternos-afk-bot-79in.onrender.com";
 let statusUpdateInterval = null;
 let logUpdateInterval = null;
 let backendStatus = "disconnected";
 let latestStatus = null;
+let openDropdowns = new Set();
+let selectedSlots = new Set(); // Tracks selected inventory slots
+let lastSelectedSlot = null; // Tracks the last selected slot for quantity persistence
+let lastQuantity = 1; // Tracks the last entered quantity
 
 function $(selector) {
   return document.querySelector(selector);
@@ -165,6 +170,7 @@ async function stopBot() {
     $("#restart-btn").disabled = true;
     $("#server-host").disabled = false;
     localStorage.removeItem("lastServerAddress");
+    selectedSlots.clear();
   } else {
     showMessage(`Failed to stop bot: ${result.message}`, "danger");
   }
@@ -510,6 +516,117 @@ async function refreshBotStats() {
   await updateStatus();
 }
 
+// Inventory Management Functions
+function toggleItemSelection(slot) {
+  if (selectedSlots.has(slot)) {
+    selectedSlots.delete(slot);
+  } else {
+    selectedSlots.add(slot);
+  }
+  updateInventorySelectionUI();
+}
+
+function updateInventorySelectionUI() {
+  const dropQuantity = $("#drop-quantity");
+  const maxButton = $("#max-quantity-btn");
+  const dropButton = $("#drop-selected-btn");
+
+  dropButton.disabled = selectedSlots.size === 0;
+
+  if (selectedSlots.size === 1) {
+    const selectedSlot = Array.from(selectedSlots)[0];
+    const selectedItem = latestStatus.inventory.find(
+      (item) => item.slot === selectedSlot
+    );
+    if (selectedItem) {
+      dropQuantity.classList.remove("d-none");
+      maxButton.classList.remove("d-none");
+      dropQuantity.max = selectedItem.count;
+      if (selectedSlot === lastSelectedSlot) {
+        dropQuantity.value = lastQuantity;
+      } else {
+        dropQuantity.value = 1;
+        lastSelectedSlot = selectedSlot;
+      }
+    }
+  } else {
+    dropQuantity.classList.add("d-none");
+    maxButton.classList.add("d-none");
+    lastSelectedSlot = null;
+  }
+
+  document.querySelectorAll(".inventory-item").forEach((item) => {
+    const slot = parseInt(item.dataset.slot);
+    if (selectedSlots.has(slot)) {
+      item.classList.add("selected");
+    } else {
+      item.classList.remove("selected");
+    }
+  });
+}
+
+async function dropSelectedItems() {
+  if (selectedSlots.size === 0) {
+    showMessage("No items selected to drop", "warning");
+    return;
+  }
+
+  if (selectedSlots.size === 1) {
+    const slot = Array.from(selectedSlots)[0];
+    const amount = parseInt($("#drop-quantity").value);
+    const max = parseInt(
+      document.querySelector(`.inventory-item[data-slot="${slot}"]`).dataset
+        .count
+    );
+    if (isNaN(amount) || amount < 1 || amount > max) {
+      showMessage(`Please enter a valid quantity (1-${max})`, "warning");
+      return;
+    }
+    const result = await callApi("/drop-item", "POST", { slot, amount });
+    showMessage(result.message, result.success ? "success" : "danger");
+    selectedSlots.clear();
+    lastSelectedSlot = null;
+  } else {
+    const slots = Array.from(selectedSlots);
+    const result = await callApi("/drop-stacks", "POST", { slots });
+    showMessage(result.message, result.success ? "success" : "danger");
+    selectedSlots.clear();
+    lastSelectedSlot = null;
+  }
+  setTimeout(updateStatus, 500);
+}
+
+async function dropAllItems() {
+  if (confirm("Are you sure you want to drop all items from the inventory?")) {
+    const result = await callApi("/drop-all", "POST");
+    if (result.success) {
+      // Hide quantity input and Max button after successful drop
+      $("#drop-quantity").classList.add("d-none");
+      $("#max-quantity-btn").classList.add("d-none");
+      showMessage(result.message, "success");
+      selectedSlots.clear();
+      lastSelectedSlot = null;
+    } else {
+      showMessage(result.message, "danger");
+    }
+    setTimeout(updateStatus, 500);
+  }
+}
+
+function updateDropdownContent(username, allPlayers) {
+  const dropdownMenu = $(`[data-player="${username}"] .dropdown-menu`);
+  if (dropdownMenu && allPlayers) {
+    const newContent = allPlayers
+      .filter((p) => p.playerUsername !== username)
+      .map(
+        (p) =>
+          `<li><a class="dropdown-item" href="#" onclick="tpPlayerToPlayer('${username}', '${p.playerUsername}')">${p.playerUsername}</a></li>`
+      )
+      .join("");
+    dropdownMenu.innerHTML = newContent;
+  }
+}
+
 async function updateStatus() {
   if (backendStatus !== "connected") return;
   try {
@@ -577,23 +694,44 @@ async function updateStatus() {
       }
 
       if (status.inventory && status.inventory.length) {
+        const currentSlots = new Set(status.inventory.map((item) => item.slot));
+        selectedSlots.forEach((slot) => {
+          if (!currentSlots.has(slot)) {
+            selectedSlots.delete(slot);
+          }
+        });
+
         const inventoryItems = status.inventory
           .map(
-            (item) =>
-              `<div class="inventory-item" title="${
-                item.displayName
-              }"><div class="item-count">${
-                item.count
-              }</div><div class="item-name">${item.name.replace(
-                /_/g,
-                " "
-              )}</div></div>`
+            (item) => `
+              <div class="inventory-item ${
+                selectedSlots.has(item.slot) ? "selected" : ""
+              }" data-slot="${item.slot}" data-count="${item.count}" title="${
+              item.displayName
+            }">
+                <div class="item-count">${item.count}</div>
+                <div class="item-name">${item.name.replace(/_/g, " ")}</div>
+              </div>
+            `
           )
           .join("");
-        $("#inventory-list").innerHTML = inventoryItems;
+        $(
+          "#inventory-list"
+        ).innerHTML = `<div class="inventory-container">${inventoryItems}</div>`;
+
+        document.querySelectorAll(".inventory-item").forEach((item) => {
+          item.onclick = () => {
+            const slot = parseInt(item.dataset.slot);
+            toggleItemSelection(slot);
+          };
+        });
+
+        updateInventorySelectionUI();
       } else {
         $("#inventory-list").innerHTML =
-          '<div class="text-muted">No items</div>';
+          '<ul class="list-group"><li class="list-group-item">No items</li></ul>';
+        selectedSlots.clear();
+        lastSelectedSlot = null;
       }
 
       if (status.nearbyEntities && status.nearbyEntities.length) {
@@ -612,7 +750,7 @@ async function updateStatus() {
         $("#entity-list").innerHTML = tableHTML;
       } else {
         $("#entity-list").innerHTML =
-          '<p class="text-muted">No entities within 30 blocks</p>';
+          '<li class="list-group-item">No entities within 30 blocks</li>';
       }
 
       $("#auto-movement-status").textContent = status.isAutoMoving
@@ -679,9 +817,9 @@ async function updateStatus() {
       }
       stopStatusUpdates();
       stopLogUpdates();
-      const playerList = $("#player-list");
-      if (playerList)
-        playerList.innerHTML = '<p class="text-muted">No players online</p>';
+      resetStatsToDefault();
+      selectedSlots.clear();
+      lastSelectedSlot = null;
     }
   } catch (error) {
     console.error("Status update error:", error);
@@ -690,6 +828,8 @@ async function updateStatus() {
     backendStatus = "disconnected";
     updateBackendStatusDisplay();
     disableAllCards();
+    selectedSlots.clear();
+    lastSelectedSlot = null;
   }
 }
 
@@ -732,8 +872,10 @@ function resetStatsToDefault() {
   $("#server-weather").textContent = "Weather = N/A";
   $("#server-time").textContent = "Time = N/A";
   $("#inventory-list").innerHTML =
-    '<div class="text-muted">No data available</div>';
+    '<ul class="list-group"><li class="list-group-item">No data available</li></ul>';
   $("#entity-list").innerHTML =
+    '<li class="list-group-item">No data available</li>';
+  $("#player-list").innerHTML =
     '<li class="list-group-item">No data available</li>';
   $("#auto-movement-status").textContent = "N/A";
   $("#auto-movement-status").className = "badge badge-secondary";
@@ -743,9 +885,8 @@ function resetStatsToDefault() {
   $("#keep-time-status").textContent = "N/A";
   $("#keep-time-status").className = "badge badge-secondary";
   $("#time-dropdown").disabled = true;
-  const playerList = $("#player-list");
-  if (playerList)
-    playerList.innerHTML = '<p class="text-muted">No players online</p>';
+  selectedSlots.clear();
+  lastSelectedSlot = null;
 }
 
 async function refreshLogs() {
@@ -756,7 +897,7 @@ async function refreshLogs() {
 function renderPlayers(players, allPlayers) {
   const playerList = $("#player-list");
   if (!players || players.length === 0) {
-    playerList.innerHTML = '<p class="text-muted">No players online</p>';
+    playerList.innerHTML = '<li class="list-group-item">No players online</li>';
     return;
   }
 
@@ -778,56 +919,32 @@ function renderPlayers(players, allPlayers) {
                 <td>${player.ping} ms</td>
                 <td>
                   <div class="btn-group" role="group">
-                    <button class="btn btn-danger" onclick="kickPlayer('${
-                      player.playerUsername
-                    }')" title="Kick Player">
+                    <button class="btn btn-danger" onclick="kickPlayer('${player.playerUsername}')" title="Kick Player">
                       <i class="fas fa-times"></i> Kick
                     </button>
-                    <button class="btn btn-danger" onclick="banPlayer('${
-                      player.playerUsername
-                    }')" title="Ban Player">
+                    <button class="btn btn-danger" onclick="banPlayer('${player.playerUsername}')" title="Ban Player">
                       <i class="fas fa-ban"></i> Ban
                     </button>
-                    <button class="btn btn-warning" onclick="killPlayer('${
-                      player.playerUsername
-                    }')" title="Kill Player">
+                    <button class="btn btn-warning" onclick="killPlayer('${player.playerUsername}')" title="Kill Player">
                       <i class="fas fa-skull"></i> Kill
                     </button>
-                    <button class="btn btn-success" onclick="healPlayer('${
-                      player.playerUsername
-                    }')" title="Heal Player">
+                    <button class="btn btn-success" onclick="healPlayer('${player.playerUsername}')" title="Heal Player">
                       <i class="fas fa-heart"></i> Heal
                     </button>
-                    <button class="btn btn-warning" onclick="starvePlayer('${
-                      player.playerUsername
-                    }')" title="Starve Player">
+                    <button class="btn btn-warning" onclick="starvePlayer('${player.playerUsername}')" title="Starve Player">
                       <i class="fas fa-dizzy"></i> Starve
                     </button>
-                    <button class="btn btn-success" onclick="feedPlayer('${
-                      player.playerUsername
-                    }')" title="Feed Player">
+                    <button class="btn btn-success" onclick="feedPlayer('${player.playerUsername}')" title="Feed Player">
                       <i class="fas fa-drumstick-bite"></i> Feed
                     </button>
-                    <button class="btn btn-info" onclick="tpBotToPlayer('${
-                      player.playerUsername
-                    }')" title="Teleport Bot to Player">
+                    <button class="btn btn-info" onclick="tpBotToPlayer('${player.playerUsername}')" title="Teleport Bot to Player">
                       <i class="fas fa-map-marker-alt"></i> TP Bot
                     </button>
-                    <div class="btn-group">
+                    <div class="btn-group" data-player="${player.playerUsername}">
                       <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" title="Teleport Player to Another Player" aria-expanded="false">
                         <i class="fas fa-exchange-alt"></i> TP To...
                       </button>
-                      <ul class="dropdown-menu">
-                        ${allPlayers
-                          .filter(
-                            (p) => p.playerUsername !== player.playerUsername
-                          )
-                          .map(
-                            (p) =>
-                              `<li><a class="dropdown-item" href="#" onclick="tpPlayerToPlayer('${player.playerUsername}', '${p.playerUsername}')">${p.playerUsername}</a></li>`
-                          )
-                          .join("")}
-                      </ul>
+                      <ul class="dropdown-menu"></ul>
                     </div>
                   </div>
                 </td>
@@ -838,7 +955,24 @@ function renderPlayers(players, allPlayers) {
       </tbody>
     </table>
   `;
+
   playerList.innerHTML = tableHTML;
+
+  players.forEach((player) => {
+    updateDropdownContent(player.playerUsername, allPlayers);
+  });
+
+  requestAnimationFrame(() => {
+    openDropdowns.forEach((username) => {
+      const toggle = $(`[data-player="${username}"] .dropdown-toggle`);
+      if (toggle) {
+        const dropdownInstance = bootstrap.Dropdown.getOrCreateInstance(toggle);
+        if (!dropdownInstance._isShown()) {
+          dropdownInstance.show();
+        }
+      }
+    });
+  });
 }
 
 window.kickPlayer = async function (playerUsername) {
@@ -974,6 +1108,22 @@ function initApp() {
     startBot();
   });
 
+  const playerList = $("#player-list");
+
+  playerList.addEventListener("shown.bs.dropdown", (event) => {
+    const btnGroup = event.target.closest(".btn-group");
+    if (btnGroup && btnGroup.dataset.player) {
+      openDropdowns.add(btnGroup.dataset.player);
+    }
+  });
+
+  playerList.addEventListener("hidden.bs.dropdown", (event) => {
+    const btnGroup = event.target.closest(".btn-group");
+    if (btnGroup && btnGroup.dataset.player) {
+      openDropdowns.delete(btnGroup.dataset.player);
+    }
+  });
+
   $("#stop-btn").addEventListener("click", stopBot);
   $("#restart-btn").addEventListener("click", restartBot);
   $("#kill-btn").addEventListener("click", killBot);
@@ -1074,6 +1224,26 @@ function initApp() {
           selectedTime.charAt(0).toUpperCase() + selectedTime.slice(1);
       });
     });
+
+  $("#drop-selected-btn").addEventListener("click", dropSelectedItems);
+  $("#drop-all-btn").addEventListener("click", dropAllItems);
+
+  $("#drop-quantity").addEventListener("input", () => {
+    lastQuantity = parseInt($("#drop-quantity").value) || 1;
+  });
+
+  $("#max-quantity-btn").addEventListener("click", () => {
+    if (selectedSlots.size === 1) {
+      const selectedSlot = Array.from(selectedSlots)[0];
+      const selectedItem = latestStatus.inventory.find(
+        (item) => item.slot === selectedSlot
+      );
+      if (selectedItem) {
+        $("#drop-quantity").value = selectedItem.count;
+        lastQuantity = selectedItem.count;
+      }
+    }
+  });
 }
 
 document.addEventListener("DOMContentLoaded", initApp);
