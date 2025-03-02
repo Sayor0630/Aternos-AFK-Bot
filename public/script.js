@@ -1,5 +1,5 @@
 // script.js
-const API_URL = "https://aternos-afk-bot-79in.onrender.com";
+const API_URL = "/api";
 let statusUpdateInterval = null;
 let logUpdateInterval = null;
 let backendStatus = "disconnected";

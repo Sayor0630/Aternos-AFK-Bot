@@ -1,20 +1,16 @@
-// server.js
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const bot = require("./bot");
-const db = require("./db");
+const bot = require("../bot"); // Adjusted path from ./bot to ../bot
+const db = require("../db");   // Adjusted path from ./db to ../db
 
 const app = express();
-const port = 3001;
 
 const logHistory = [];
 function addToLog(type, message) {
   const timestamp = new Date().toISOString();
   logHistory.unshift({ timestamp, type, message });
-  if (logHistory.length > 100) {
-    logHistory.pop();
-  }
+  if (logHistory.length > 100) logHistory.pop();
 }
 
 app.use(cors());
@@ -304,18 +300,33 @@ async function startBotWithAutoReconnect() {
   }
 }
 
-async function startServer() {
-  try {
-    await db.connect();
-    app.listen(port, () => {
-      console.log(`Server running at http://localhost:${port}`);
-      addToLog("system", "Backend server started");
+// For local development: Serve static files and start server
+if (process.env.NODE_ENV !== "production") {
+  const localApp = express();
+  localApp.use(express.static("public")); // Serve frontend files from public
+  localApp.use("/api", app);              // Mount API at /api
+  const port = process.env.PORT || 3001;
+  localApp.listen(port, async () => {
+    console.log(`Server running at http://localhost:${port}`);
+    addToLog("system", "Backend server started");
+    try {
+      await db.connect();
       startBotWithAutoReconnect();
-    });
-  } catch (err) {
-    console.error("Failed to start server:", err);
-    process.exit(1);
-  }
-}
+    } catch (err) {
+      console.error("Failed to initialize server:", err);
+      process.exit(1);
+    }
+  });
+} else {
+  // For Vercel: Export the app
+  module.exports = app;
 
-startServer();
+  // Connect to DB and attempt auto-reconnect on deployment
+  db.connect()
+    .then(() => {
+      startBotWithAutoReconnect();
+    })
+    .catch((err) => {
+      console.error("Failed to connect to MongoDB on startup:", err);
+    });
+}

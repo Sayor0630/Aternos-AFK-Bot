@@ -2,9 +2,10 @@
     "name": "aternos_afk_bot",
     "version": "1.1.0",
     "description": "This bot tested works with Minecraft version 1.20.1 with Fabric",
-    "main": "server.js",
+    "main": "api/index.js",
     "scripts": {
-        "start": "node server.js"
+        "start": "node api/index.js",
+        "deploy": "vercel"
     },
     "author": "Sayor0603",
     "license": "MIT",
@@ -19,6 +20,9 @@
     },
     "devDependencies": {
         "node": "^22.13.1"
+    },
+    "engines": {
+        "node": "22.x"
     },
     "repository": {
         "type": "git",
