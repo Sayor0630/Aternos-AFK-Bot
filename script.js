@@ -1,13 +1,13 @@
-// script.js
 const API_URL = "https://aternos-afk-bot-79in.onrender.com";
 let statusUpdateInterval = null;
 let logUpdateInterval = null;
 let backendStatus = "disconnected";
 let latestStatus = null;
 let openDropdowns = new Set();
-let selectedSlots = new Set(); // Tracks selected inventory slots
-let lastSelectedSlot = null; // Tracks the last selected slot for quantity persistence
-let lastQuantity = 1; // Tracks the last entered quantity
+let selectedSlots = new Set();
+let lastSelectedSlot = null;
+let lastQuantity = 1;
+let botUsername = "unknownBot";
 
 function $(selector) {
   return document.querySelector(selector);
@@ -113,6 +113,7 @@ async function checkBackendAvailability() {
       showMessage("Backend server is now available.", "success");
       const status = await callApi("/bot-status");
       if (status.online) {
+        botUsername = status.botUsername || botUsername;
         enableAllCards();
         startStatusUpdates();
         startLogUpdates();
@@ -284,6 +285,49 @@ async function teleportBot() {
   setTimeout(updateStatus, 500);
 }
 
+// Function to determine text color based on background lightness
+function getTextColor(backgroundColor) {
+  const hslMatch = backgroundColor.match(/\d+/g);
+  if (!hslMatch) return "white"; // Fallback
+  const lightness = parseInt(hslMatch[2]);
+  return lightness > 50 ? "black" : "white";
+}
+
+// Function to generate a unique background color
+function getColorForUsername(username) {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return `hsl(${hash % 360}, 70%, 80%)`;
+}
+
+async function updateChatLog() {
+  try {
+    const chatHistory = await callApi("/chat-history");
+    const chatLog = $("#chat-log");
+    chatLog.innerHTML = "";
+    chatHistory.forEach((chat) => {
+      const isBot = chat.username === botUsername;
+      const backgroundColor = isBot
+        ? "#2e7d32"
+        : getColorForUsername(chat.username);
+      const textColor = getTextColor(backgroundColor);
+      const time = new Date(chat.timestamp).toLocaleTimeString();
+      const messageHTML = `
+        <div class="chat-message" style="background-color: ${backgroundColor}; color: ${textColor};">
+          <span class="timestamp" style="color: ${textColor};">${time}</span>
+          <span class="sender" style="color: ${textColor};">${chat.username}:</span> ${chat.message}
+        </div>
+      `;
+      chatLog.innerHTML += messageHTML;
+    });
+    chatLog.scrollTop = chatLog.scrollHeight;
+  } catch (error) {
+    console.error("Failed to update chat log:", error);
+  }
+}
+
 async function sendChat() {
   const message = $("#chat-message").value.trim();
   if (!message) {
@@ -293,14 +337,11 @@ async function sendChat() {
   const result = await callApi("/send-chat", "POST", { message });
   if (result.success) {
     $("#chat-message").value = "";
-    $(
-      "#chat-log"
-    ).innerHTML += `<div class="chat-message outgoing"><span class="sender">Bot:</span> ${message}</div>`;
-    $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
+    setTimeout(updateStatus, 500);
+    setTimeout(updateChatLog, 500); // Immediate chat update
   } else {
     showMessage(`Failed to send message: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500);
 }
 
 function updateCommandButtonStates() {
@@ -458,7 +499,6 @@ async function toggleAutoMovement() {
   } else {
     showMessage(`Failed to toggle auto movement: ${result.message}`, "danger");
   }
-  setTimeout(updateStatus, 500);
 }
 
 async function toggleKeepWeather() {
@@ -516,7 +556,6 @@ async function refreshBotStats() {
   await updateStatus();
 }
 
-// Inventory Management Functions
 function toggleItemSelection(slot) {
   if (selectedSlots.has(slot)) {
     selectedSlots.delete(slot);
@@ -600,7 +639,6 @@ async function dropAllItems() {
   if (confirm("Are you sure you want to drop all items from the inventory?")) {
     const result = await callApi("/drop-all", "POST");
     if (result.success) {
-      // Hide quantity input and Max button after successful drop
       $("#drop-quantity").classList.add("d-none");
       $("#max-quantity-btn").classList.add("d-none");
       showMessage(result.message, "success");
@@ -634,6 +672,7 @@ async function updateStatus() {
     latestStatus = status;
 
     if (status.online) {
+      botUsername = status.botUsername || botUsername;
       enableAllCards();
       $("#connection-status").textContent = "Connected";
       $("#connection-status").className = "badge badge-success";
@@ -689,8 +728,10 @@ async function updateStatus() {
           status.weather.charAt(0).toUpperCase() + status.weather.slice(1)
         }`;
       }
-      if (status.serverTime) {
-        $("#server-time").textContent = `Time = ${status.serverTime}`;
+      if (status.serverTime && status.timeOfDayDescription) {
+        $(
+          "#server-time"
+        ).textContent = `Time = ${status.serverTime} (${status.timeOfDayDescription})`;
       }
 
       if (status.inventory && status.inventory.length) {
@@ -850,7 +891,11 @@ function stopStatusUpdates() {
 function startLogUpdates() {
   if (!logUpdateInterval) {
     updateLogs();
-    logUpdateInterval = setInterval(updateLogs, 5000);
+    updateChatLog();
+    logUpdateInterval = setInterval(() => {
+      updateLogs();
+      updateChatLog();
+    }, 5000);
   }
 }
 
@@ -919,31 +964,15 @@ function renderPlayers(players, allPlayers) {
                 <td>${player.ping} ms</td>
                 <td>
                   <div class="btn-group" role="group">
-                    <button class="btn btn-danger" onclick="kickPlayer('${player.playerUsername}')" title="Kick Player">
-                      <i class="fas fa-times"></i> Kick
-                    </button>
-                    <button class="btn btn-danger" onclick="banPlayer('${player.playerUsername}')" title="Ban Player">
-                      <i class="fas fa-ban"></i> Ban
-                    </button>
-                    <button class="btn btn-warning" onclick="killPlayer('${player.playerUsername}')" title="Kill Player">
-                      <i class="fas fa-skull"></i> Kill
-                    </button>
-                    <button class="btn btn-success" onclick="healPlayer('${player.playerUsername}')" title="Heal Player">
-                      <i class="fas fa-heart"></i> Heal
-                    </button>
-                    <button class="btn btn-warning" onclick="starvePlayer('${player.playerUsername}')" title="Starve Player">
-                      <i class="fas fa-dizzy"></i> Starve
-                    </button>
-                    <button class="btn btn-success" onclick="feedPlayer('${player.playerUsername}')" title="Feed Player">
-                      <i class="fas fa-drumstick-bite"></i> Feed
-                    </button>
-                    <button class="btn btn-info" onclick="tpBotToPlayer('${player.playerUsername}')" title="Teleport Bot to Player">
-                      <i class="fas fa-map-marker-alt"></i> TP Bot
-                    </button>
+                    <button class="btn btn-danger" onclick="kickPlayer('${player.playerUsername}')" title="Kick Player"><i class="fas fa-times"></i> Kick</button>
+                    <button class="btn btn-danger" onclick="banPlayer('${player.playerUsername}')" title="Ban Player"><i class="fas fa-ban"></i> Ban</button>
+                    <button class="btn btn-warning" onclick="killPlayer('${player.playerUsername}')" title="Kill Player"><i class="fas fa-skull"></i> Kill</button>
+                    <button class="btn btn-success" onclick="healPlayer('${player.playerUsername}')" title="Heal Player"><i class="fas fa-heart"></i> Heal</button>
+                    <button class="btn btn-warning" onclick="starvePlayer('${player.playerUsername}')" title="Starve Player"><i class="fas fa-dizzy"></i> Starve</button>
+                    <button class="btn btn-success" onclick="feedPlayer('${player.playerUsername}')" title="Feed Player"><i class="fas fa-drumstick-bite"></i> Feed</button>
+                    <button class="btn btn-info" onclick="tpBotToPlayer('${player.playerUsername}')" title="Teleport Bot to Player"><i class="fas fa-map-marker-alt"></i> TP Bot</button>
                     <div class="btn-group" data-player="${player.playerUsername}">
-                      <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" title="Teleport Player to Another Player" aria-expanded="false">
-                        <i class="fas fa-exchange-alt"></i> TP To...
-                      </button>
+                      <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" title="Teleport Player to Another Player" aria-expanded="false"><i class="fas fa-exchange-alt"></i> TP To...</button>
                       <ul class="dropdown-menu"></ul>
                     </div>
                   </div>
@@ -978,14 +1007,7 @@ function renderPlayers(players, allPlayers) {
 window.kickPlayer = async function (playerUsername) {
   if (confirm(`Are you sure you want to kick ${playerUsername}?`)) {
     const result = await callApi("/kick-player", "POST", { playerUsername });
-    if (result.success) {
-      showMessage(result.message, "success");
-    } else {
-      showMessage(
-        `Failed to kick ${playerUsername}: ${result.message}`,
-        "danger"
-      );
-    }
+    showMessage(result.message, result.success ? "success" : "danger");
   }
   setTimeout(updateStatus, 500);
 };
@@ -993,80 +1015,38 @@ window.kickPlayer = async function (playerUsername) {
 window.banPlayer = async function (playerUsername) {
   if (confirm(`Are you sure you want to ban ${playerUsername}?`)) {
     const result = await callApi("/ban-player", "POST", { playerUsername });
-    if (result.success) {
-      showMessage(result.message, "success");
-    } else {
-      showMessage(
-        `Failed to ban ${playerUsername}: ${result.message}`,
-        "danger"
-      );
-    }
+    showMessage(result.message, result.success ? "success" : "danger");
   }
   setTimeout(updateStatus, 500);
 };
 
 window.killPlayer = async function (playerUsername) {
   const result = await callApi("/kill-player", "POST", { playerUsername });
-  if (result.success) {
-    showMessage(result.message, "success");
-  } else {
-    showMessage(
-      `Failed to kill ${playerUsername}: ${result.message}`,
-      "danger"
-    );
-  }
+  showMessage(result.message, result.success ? "success" : "danger");
   setTimeout(updateStatus, 500);
 };
 
 window.healPlayer = async function (playerUsername) {
   const result = await callApi("/heal-player", "POST", { playerUsername });
-  if (result.success) {
-    showMessage(result.message, "success");
-  } else {
-    showMessage(
-      `Failed to heal ${playerUsername}: ${result.message}`,
-      "danger"
-    );
-  }
+  showMessage(result.message, result.success ? "success" : "danger");
   setTimeout(updateStatus, 500);
 };
 
 window.starvePlayer = async function (playerUsername) {
   const result = await callApi("/starve-player", "POST", { playerUsername });
-  if (result.success) {
-    showMessage(result.message, "success");
-  } else {
-    showMessage(
-      `Failed to starve ${playerUsername}: ${result.message}`,
-      "danger"
-    );
-  }
+  showMessage(result.message, result.success ? "success" : "danger");
   setTimeout(updateStatus, 500);
 };
 
 window.feedPlayer = async function (playerUsername) {
   const result = await callApi("/feed-player", "POST", { playerUsername });
-  if (result.success) {
-    showMessage(result.message, "success");
-  } else {
-    showMessage(
-      `Failed to feed ${playerUsername}: ${result.message}`,
-      "danger"
-    );
-  }
+  showMessage(result.message, result.success ? "success" : "danger");
   setTimeout(updateStatus, 500);
 };
 
 window.tpBotToPlayer = async function (playerUsername) {
   const result = await callApi("/tp-bot-to-player", "POST", { playerUsername });
-  if (result.success) {
-    showMessage(result.message, "success");
-  } else {
-    showMessage(
-      `Failed to teleport bot to ${playerUsername}: ${result.message}`,
-      "danger"
-    );
-  }
+  showMessage(result.message, result.success ? "success" : "danger");
   setTimeout(updateStatus, 500);
 };
 
@@ -1078,14 +1058,7 @@ window.tpPlayerToPlayer = async function (
     fromPlayerUsername,
     toPlayerUsername,
   });
-  if (result.success) {
-    showMessage(result.message, "success");
-  } else {
-    showMessage(
-      `Failed to teleport ${fromPlayerUsername} to ${toPlayerUsername}: ${result.message}`,
-      "danger"
-    );
-  }
+  showMessage(result.message, result.success ? "success" : "danger");
   setTimeout(updateStatus, 500);
 };
 
@@ -1243,6 +1216,12 @@ function initApp() {
         lastQuantity = selectedItem.count;
       }
     }
+  });
+
+  // Wire up the static chat refresh button
+  $("#refresh-chat-btn").addEventListener("click", () => {
+    showMessage("Refreshing chat...", "info");
+    updateChatLog();
   });
 }
 

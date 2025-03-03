@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
@@ -158,7 +157,7 @@ app.get("/bot-action", (req, res) => {
 app.post("/send-chat", (req, res) => {
   const { message } = req.body;
   const result = bot.sendChatMessage(message);
-  addToLog("chat", `Bot: ${message}`);
+  addToLog("chat", `${bot.botUsername}: ${message}`);
   res.json(result);
 });
 
@@ -190,6 +189,10 @@ app.post("/toggle-auto-movement", (req, res) => {
 
 app.get("/log-history", (req, res) => {
   res.json(logHistory);
+});
+
+app.get("/chat-history", (req, res) => {
+  res.json(bot.chatHistory);
 });
 
 app.post("/kick-player", (req, res) => {

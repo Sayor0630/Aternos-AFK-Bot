@@ -1,4 +1,3 @@
-// bot.js
 const mineflayer = require("mineflayer");
 require("dotenv").config();
 const cmd = require("mineflayer-cmd").plugin;
@@ -14,9 +13,10 @@ let lastChatTime = 0;
 let botInventory = [];
 let nearbyEntities = [];
 let serverTime = "unknown";
+let timeOfDayDescription = "Unknown";
 let weather = "unknown";
 let isAutoMoving = false;
-let movementInterval = null; // Single reference for auto movement interval
+let movementInterval = null;
 let isDead = false;
 let lastFoodLevel = 20;
 let keepWeatherEnabled = false;
@@ -24,38 +24,46 @@ let targetWeather = null;
 let keepTimeEnabled = false;
 let targetTime = null;
 let maintenanceInterval;
+let chatHistory = [];
+let botUsername = process.env.BOT_USERNAME;
 
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_DELAY = 5000;
 
-function fixVehiclePassengersIssue() {
+function fixVehiclePassengersAndErrors() {
   if (bot && bot._client) {
-    const originalEntityHandler = bot.entities ? bot.entities.onMount : null;
+    // Override bot.emit to catch all event emission errors
+    const originalEmit = bot.emit;
+    bot.emit = function (event, ...args) {
+      try {
+        originalEmit.apply(this, [event, ...args]);
+      } catch (err) {
+        console.log(`Caught error in event '${event}': ${err.message}`, args);
+      }
+    };
+
+    // Override specific packet handlers for additional safety
     const originalOnMount = bot._client.on;
     bot._client.on = function (event, handler) {
-      if (event === "mount") {
+      if (
+        event === "mount" ||
+        event === "set_passengers" ||
+        event === "entity_status"
+      ) {
         return originalOnMount.call(this, event, (packet) => {
           try {
             handler(packet);
           } catch (err) {
-            console.log("Ignored mount error:", err.message);
+            console.log(
+              `Ignored packet error (${event}): ${err.message}`,
+              packet
+            );
           }
         });
       }
       return originalOnMount.call(this, event, handler);
     };
-    if (bot.entities && typeof bot.entities.onMount === "function") {
-      bot.entities.onMount = function (packet) {
-        try {
-          if (originalEntityHandler) {
-            originalEntityHandler.call(bot.entities, packet);
-          }
-        } catch (err) {
-          console.log("Ignored entity mount error:", err.message);
-        }
-      };
-    }
   }
 }
 
@@ -134,6 +142,9 @@ function startBot(host, port, onLoginCallback) {
     keepAlive: true,
   });
 
+  // Apply error handling immediately after bot creation
+  fixVehiclePassengersAndErrors();
+
   bot._intentionalDisconnect = false;
   bot.loadPlugin(cmd);
   bot.loadPlugin(pathfinder);
@@ -144,7 +155,6 @@ function startBot(host, port, onLoginCallback) {
   });
 
   bot.once("login", async () => {
-    fixVehiclePassengersIssue();
     isConnected = true;
     connectionStatus = "connected";
     isDead = false;
@@ -201,6 +211,26 @@ function startBot(host, port, onLoginCallback) {
     if (keepWeatherEnabled && targetWeather)
       bot.chat(`/weather ${targetWeather}`);
     if (keepTimeEnabled && targetTime) bot.chat(`/time set ${targetTime}`);
+
+    // Filter out unknown entities
+    bot.on("entitySpawn", (entity) => {
+      if (!entity.type || entity.type === "unknown" || !entity.name) {
+        console.log(
+          `Ignoring entity: ID=${entity.id}, Type=${
+            entity.type || "none"
+          }, Name=${entity.name || "none"}`
+        );
+        delete bot.entities[entity.id];
+      }
+    });
+
+    // Skip updates for unknown entities
+    bot.on("entityUpdate", (entity) => {
+      if (!entity.type || !entity.name) {
+        console.log(`Skipping update for unknown entity: ID=${entity.id}`);
+        return;
+      }
+    });
   });
 
   bot.on("death", () => {
@@ -217,7 +247,7 @@ function startBot(host, port, onLoginCallback) {
       if (isAutoMoving) {
         startAutoMovement();
       } else {
-        stopAutoMovement(); // Ensure no movement if toggle is OFF
+        stopAutoMovement();
       }
       if (keepWeatherEnabled && targetWeather)
         bot.chat(`/weather ${targetWeather}`);
@@ -228,6 +258,8 @@ function startBot(host, port, onLoginCallback) {
   bot.on("chat", (username, message) => {
     lastChatTime = Date.now();
     console.log(`[CHAT] ${username}: ${message}`);
+    chatHistory.push({ username, message, timestamp: Date.now() });
+    if (chatHistory.length > 100) chatHistory.shift();
     if (
       message.toLowerCase().includes("hello bot") &&
       username !== bot.username
@@ -525,11 +557,16 @@ function startAutoMovement() {
       bot.pathfinder.setGoal(
         new GoalBlock(targetX, Math.floor(pos.y), targetZ)
       );
+      console.log(
+        `Setting movement goal to X: ${targetX}, Y: ${Math.floor(
+          pos.y
+        )}, Z: ${targetZ}`
+      );
       console.log(`Auto moving to X: ${targetX}, Z: ${targetZ}`);
     } catch (err) {
       console.error("Error in auto movement:", err.message);
     }
-  }, 3000); // Consistent 3-second interval for controlled movement
+  }, 3000);
 
   console.log("Auto movement started");
 }
@@ -596,6 +633,7 @@ function getBotStatus() {
     );
     return {
       online: true,
+      botUsername,
       connectionStatus,
       connectionError,
       health: bot.health,
@@ -604,6 +642,7 @@ function getBotStatus() {
       location: bot.entity.position,
       weather,
       serverTime,
+      timeOfDayDescription,
       experience: bot.experience,
       inventory: botInventory,
       nearbyEntities,
@@ -658,9 +697,23 @@ function updateServerTime() {
       serverTime = `${hours.toString().padStart(2, "0")}:${minutes
         .toString()
         .padStart(2, "0")}`;
+
+      if (timeOfDay >= 5500 && timeOfDay <= 6500) {
+        timeOfDayDescription = "Noon";
+      } else if (timeOfDay >= 17500 && timeOfDay <= 18500) {
+        timeOfDayDescription = "Midnight";
+      } else if (timeOfDay >= 0 && timeOfDay < 12000) {
+        timeOfDayDescription = "Day";
+      } else if (timeOfDay >= 12000 && timeOfDay < 24000) {
+        timeOfDayDescription = "Night";
+      } else {
+        timeOfDayDescription = "Unknown";
+      }
+
       weather = bot.isRaining ? "raining" : "clear";
     } catch (e) {
       serverTime = "unknown";
+      timeOfDayDescription = "Unknown";
     }
   }
 }
@@ -945,4 +998,5 @@ module.exports = {
   dropItemFromSlot,
   dropStacksFromSlots,
   dropAllItems,
+  chatHistory,
 };
