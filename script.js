@@ -1,4 +1,4 @@
-const API_URL = "https://aternos-afk-bot-79in.onrender.com";
+const API_URL = "https://aternos-afk-bot-6duw.onrender.com";
 let statusUpdateInterval = null;
 let logUpdateInterval = null;
 let backendStatus = "disconnected";
