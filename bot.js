@@ -227,7 +227,7 @@ function startBot(host, port, onLoginCallback) {
     // Skip updates for unknown entities
     bot.on("entityUpdate", (entity) => {
       if (!entity.type || !entity.name) {
-        console.log(`Skipping update for unknown entity: ID=${entity.id}`);
+        // console.log(`Skipping update for unknown entity: ID=${entity.id}`);
         return;
       }
     });
